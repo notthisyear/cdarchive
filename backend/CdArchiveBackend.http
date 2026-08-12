@@ -1,0 +1,14 @@
+@CdArchiveBackend_HostAddress = https://172.18.41.100
+
+GET {{CdArchiveBackend_HostAddress}}/api
+
+###
+POST {{CdArchiveBackend_HostAddress}}/api/auth/login
+Content-Type: application/json
+{
+    "username": "asd",
+    "password": "12345678"
+}
+
+###
+GET {{CdArchiveBackend_HostAddress}}/api/records
