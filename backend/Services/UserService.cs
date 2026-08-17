@@ -1,20 +1,26 @@
 ﻿using CdArchiveBackend.Data;
+using CdArchiveBackend.Common;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Threading.Tasks;
-
 namespace CdArchiveBackend.Services
 {
-    public class UserService
+    internal sealed class UserService(UserContext userDbContext)
     {
-        public Task<UserData?> TryLoginAsync(LoginRequest request)
-        {
-            // TODO: Validate the request
+        private readonly UserContext _userDbContext = userDbContext;
 
-            return Task.FromResult<UserData?>(new UserData()
+        public async Task<UserData?> TryLoginAsync(LoginRequest request)
+        {
+            try
             {
-                Id = 0,
-                Username = request.Username,
-                Email = "lindquist.calle@gmail.com"
-            });
+                var matchingUser = await _userDbContext.Users.FirstAsync(x => x.Username.Equals(request.Username)).ConfigureAwait(false);
+                var passwordHasher = new PasswordHasher();
+                return passwordHasher.VerifyPassword(request.Password, matchingUser.PasswordHash) ? matchingUser : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

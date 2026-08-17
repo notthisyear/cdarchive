@@ -1,12 +1,17 @@
-﻿namespace CdArchiveBackend.Data
+﻿using System;
+
+namespace CdArchiveBackend.Data
 {
-    public readonly record struct UserData
+    public sealed record UserData
     {
         public long Id { get; init; }
-        
-        public string Username { get; init; }
 
-        public string Email { get; init; }
+        public required string Username { get; init; }
 
+        public required string Email { get; init; }
+
+        public required string PasswordHash { get; init; }
+
+        public DateTime CreatedAt { get; init; }
     }
 }

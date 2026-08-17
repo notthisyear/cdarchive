@@ -3,6 +3,8 @@ using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Globalization;
@@ -27,6 +29,10 @@ namespace CdArchiveBackend
                 });
             builder.Services.AddAuthorization();
 
+            builder.Services.AddDbContext<UserContext>(
+                opt => opt.UseNpgsql(
+                    builder.Configuration.GetConnectionString("UserContext")));
+
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<UserService>();
             builder.Services.AddScoped<RecordsService>();
@@ -45,7 +51,7 @@ namespace CdArchiveBackend
 
                 return Results.Ok(new
                 {
-                    token = jwtService.CreateToken(user.Value)
+                    token = jwtService.CreateToken(user)
                 });
             });
 
@@ -100,7 +106,7 @@ namespace CdArchiveBackend
 
                 Console.WriteLine($"received record request for user {userId}, recordData:");
                 Console.WriteLine(recordData.ToString());
-                
+
                 // Results.CreatedAtRoute(GetRecordEndpoint, new { id = record.id }, record);
                 return Results.Ok();
             }).RequireAuthorization();
