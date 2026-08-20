@@ -2,3 +2,4 @@
 obj/
 bin/
 frontend/css/output.css
+backend/Migrations/

@@ -1,19 +1,19 @@
-﻿using CdArchiveBackend.Data;
-using CdArchiveBackend.Common;
+﻿using CdArchiveBackend.Common;
+using CdArchiveBackend.Data;
+using CdArchiveBackend.Data.DTO;
 using Microsoft.EntityFrameworkCore;
-using System;
 using System.Threading.Tasks;
 namespace CdArchiveBackend.Services
 {
-    internal sealed class UserService(UserContext userDbContext)
+    internal sealed class UserService(DatabaseContext dbContext)
     {
-        private readonly UserContext _userDbContext = userDbContext;
+        private readonly DatabaseContext _dbContext = dbContext;
 
         public async Task<UserData?> TryLoginAsync(LoginRequest request)
         {
             try
             {
-                var matchingUser = await _userDbContext.Users.FirstAsync(x => x.Username.Equals(request.Username)).ConfigureAwait(false);
+                var matchingUser = await _dbContext.Users.FirstAsync(x => x.Username.Equals(request.Username)).ConfigureAwait(false);
                 var passwordHasher = new PasswordHasher();
                 return passwordHasher.VerifyPassword(request.Password, matchingUser.PasswordHash) ? matchingUser : null;
             }

@@ -1,14 +1,11 @@
-using CdArchiveBackend.Data;
+using CdArchiveBackend.Endpoints;
 using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Globalization;
-using System.Security.Claims;
+using System.Collections.Generic;
 
 namespace CdArchiveBackend
 {
@@ -21,6 +18,7 @@ namespace CdArchiveBackend
             var builder = WebApplication.CreateBuilder(args);
             var configuration = builder.Configuration;
 
+            // Services
             builder.Services
                 .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(opt =>
@@ -29,91 +27,38 @@ namespace CdArchiveBackend
                 });
             builder.Services.AddAuthorization();
 
-            builder.Services.AddDbContext<UserContext>(
+            builder.Services.AddDbContext<DatabaseContext>(
                 opt => opt.UseNpgsql(
-                    builder.Configuration.GetConnectionString("UserContext")));
+                    builder.Configuration.GetConnectionString("UserContext"))
+                    .UseSnakeCaseNamingConvention());
 
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<UserService>();
             builder.Services.AddScoped<RecordsService>();
+            builder.Services.AddScoped<ArtistService>();
 
             var app = builder.Build();
 
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // POST /auth/login
-            app.MapPost("/auth/login", async (LoginRequest loginRequest, UserService userService, JwtService jwtService) =>
-            {
-                var user = await userService.TryLoginAsync(loginRequest).ConfigureAwait(false);
-                if (user == null)
-                    return Results.Unauthorized();
+            // Endpoints
+            List<EndpointGroupBase> endpointGroups = [];
+            
+            var authEndpointGroup = new EndpointGroupBase("/auth");
+            authEndpointGroup.AddEndpoint(new LoginEndpoint());
+            endpointGroups.Add(authEndpointGroup);
 
-                return Results.Ok(new
-                {
-                    token = jwtService.CreateToken(user)
-                });
-            });
+            var recordsEndpointGroup = new EndpointGroupBase("/records", useAuthorization: true);
+            recordsEndpointGroup.AddEndpoint(new GetRecordsEndpoint());
+            recordsEndpointGroup.AddEndpoint(new GetRecordEndpoint());
+            recordsEndpointGroup.AddEndpoint(new CreateRecordEndpoint());
+            endpointGroups.Add(recordsEndpointGroup);
 
-            // GET /records
-            app.MapGet("/records", async (int offset, int limit, ClaimsPrincipal user, RecordsService recordsService) =>
-            {
-                if (!int.TryParse(
-                    user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var userId))
-                {
-                    return Results.BadRequest();
-                }
-
-                return Results.Ok(new
-                {
-                    records = await recordsService.GetRecordSummaries(userId, offset, limit).ConfigureAwait(false)
-                });
-            }).RequireAuthorization();
-
-            // GET /record/{id}
-            app.MapGet("/record/{recordId}", async (int recordId, ClaimsPrincipal user, RecordsService recordsService) =>
-            {
-                if (!int.TryParse(
-                    user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var userId))
-                {
-                    return Results.BadRequest();
-                }
-
-                Console.WriteLine($"received record request for user {userId} and record id: {recordId}");
-                return Results.Ok(new
-                {
-                    record = await recordsService.GetRecordData(recordId).ConfigureAwait(false)
-                });
-            }).RequireAuthorization().WithName(GetRecordEndpoint);
-
-            // POST /records
-            app.MapPost("/records", async (RecordData recordData, ClaimsPrincipal user, RecordsService recordsService) =>
-            {
-                if (!int.TryParse(
-                    user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var userId))
-                {
-                    return Results.BadRequest();
-                }
-
-                Console.WriteLine($"received record request for user {userId}, recordData:");
-                Console.WriteLine(recordData.ToString());
-
-                // Results.CreatedAtRoute(GetRecordEndpoint, new { id = record.id }, record);
-                return Results.Ok();
-            }).RequireAuthorization();
-
+            foreach (var endpointGroup in endpointGroups)
+                endpointGroup.AddEndpoints(app);
 
             app.Run();
-
         }
     }
 }

@@ -1,18 +1,17 @@
-﻿namespace CdArchiveBackend.Data
+﻿using System.Collections.Generic;
+
+namespace CdArchiveBackend.Data
 {
-    public readonly record struct Artist
+    internal sealed record Artist
     {
         public long Id { get; init; }
 
-        public string Name { get; init; }
+        public required string Name { get; init; }
 
         public string? ImageUrl { get; init; }
 
-        public string? SpotifyLink { get; init; }
+        public string? SpotifyUrl { get; init; }
 
-        public string ToString(string indent)
-        {
-            return $"{indent}ID: {Id}\n{indent}Name: {Name}\n{indent}ImageUrl: {ImageUrl ?? string.Empty}\n{indent}SpotifyLink: {SpotifyLink ?? string.Empty}";
-        }
+        public ICollection<ReleaseArtist> ReleaseArtists { get; init; } = [];
     }
 }
