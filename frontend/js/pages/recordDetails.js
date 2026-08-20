@@ -74,7 +74,7 @@ export async function render(params) {
                                 Length
                             </dt>
                             <dd>
-                                ${util.getAsTimeStringWithSuffix(record.lengthSeconds)}
+                                ${util.getAsTimeStringWithSuffix(record.durationSeconds)}
                             </dd>
                         </div>
                     </dl>

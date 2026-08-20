@@ -55,7 +55,7 @@ export async function login(username, password) {
 }
 
 export async function getRecord(recordId) {
-    const url = new URL(`/api/record/${encodeURIComponent(recordId)}`, window.location.origin);
+    const url = new URL(`/api/records/${encodeURIComponent(recordId)}`, window.location.origin);
     const response = await fetchFromUrl(url);
     return (await response.json()).record;
 }

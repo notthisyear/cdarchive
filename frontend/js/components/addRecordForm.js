@@ -532,14 +532,16 @@ export function show() {
                     const newRecordRequest = {
                         summary: {
                             name: recordName.value,
-                            artist: {
-                                name: recordArtist.value
-                            },
+                            artists: [
+                                {
+                                    name: recordArtist.value
+                                }
+                            ],
                             year: recordYear.value,
                             imageUrl: coverImage.src,
                             spotifyLink: recordSpotifyUrl.value,
                         },
-                        lengthSeconds: util.parseDurationToSeconds(duration),
+                        durationSeconds: util.parseDurationToSeconds(duration),
                         tracks: [...tracksMap.values()].map(x => x)
                     };
 
