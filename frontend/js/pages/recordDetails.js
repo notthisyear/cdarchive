@@ -1,8 +1,7 @@
 import * as api from "../api.js";
 import * as util from "../util.js"
 import * as styles from "../styles.js";
-import * as trackEditor from "../components/trackEditor.js";
-import * as trackRow from "../components/trackRow.js";
+import * as trackListing from "../components/trackListing.js"
 
 export async function render(params) {
     const record = await api.getRecord(params.id);
@@ -16,7 +15,7 @@ export async function render(params) {
             
             <!-- Left side -->
             <div class="space-y-6">
-                <img src="/api/records/${record.id}/cover?size=large"
+                <img src="/images/${record.summary.imageUrl}"
                      alt="${record.summary.name}"
                      class="
                         w-full
@@ -47,7 +46,7 @@ export async function render(params) {
                     </h1>
 
                     <h2 class=" text-xl text-slate-600 dark:text-slate-300 mt-1">
-                        ${record.summary.artist.name}
+                        ${util.concatenateArtists(record.summary.artists)}
                     </h2>
 
                     <dl class="mt-6 space-y-4">
@@ -113,14 +112,14 @@ export async function render(params) {
         console.log("edit summary");
     });
 
-    const trackList = root.querySelector("#trackList");
+    const trackListElement = root.querySelector("#trackList");
+    trackListing.clearAllTracks(trackListElement);
     for (const track of record.tracks) {
-        const row = trackRow.create(track.title, track.trackNumber, track.durationSeconds);
-        row.addEventListener("click", () => {
-            trackEditor.show(track.title, track.trackNumber, track.durationSeconds);
-        });
-        trackList.append(row);
+        trackListing.addTrackRow(trackListElement, track.title, track.discNumber, track.trackNumber, track.durationSeconds);
     }
+
+    const addTrackButton = root.querySelector("#addTrackButton");
+    addTrackButton.addEventListener("click", () => trackListing.addEmptyTrackRow(trackListElement));
 
     return root;
 }

@@ -47,7 +47,7 @@ export function getAsTimeStringWithSuffix(s) {
     return result.join('');
 }
 
-export function getAsColonSeparatedTimeString(s) {
+export function getAsColonSeparatedTimeString(s, forceHours = false, forceMinutes = false) {
     const parts = getPartsFromSeconds(s);
     if (parts === null) {
         return "N/a";
@@ -58,8 +58,8 @@ export function getAsColonSeparatedTimeString(s) {
     }
 
     const result = [];
-    addToTimeStringWithColonIfNonZero(result, parts.hours);
-    addToTimeStringWithColonIfNonZero(result, parts.minutes);
+    addToTimeStringWithColonIfNonZero(result, parts.hours, forceHours);
+    addToTimeStringWithColonIfNonZero(result, parts.minutes, forceMinutes);
     addToTimeStringWithColonIfNonZero(result, parts.seconds);
 
     return result.join('');
@@ -74,12 +74,12 @@ function addToTimeStringWithSuffixIfNonZero(result, v, suffix) {
     }
 }
 
-function addToTimeStringWithColonIfNonZero(result, v) {
+function addToTimeStringWithColonIfNonZero(result, v, force = false) {
     if (result.length > 0) {
         result.push(":");
         result.push(String(v).padStart(2, '0'));
     }
-    else if (v > 0) {
+    else if (force || v > 0) {
         result.push(v);
     }
 }
@@ -120,6 +120,10 @@ export function concatenateArtists(artists) {
         i++;
     });
     return result.join('');
+}
+
+export function splitArtists(artists) {
+    return artists.split(",").map(x => x.trim());
 }
 
 export function parseDurationToSeconds(text) {

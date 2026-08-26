@@ -12,7 +12,38 @@ export const recordSummary = `
     transition-colors
     relative
     group
-`
+`;
+
+export const recordCard = `
+    bg-slate-800
+    rounded-xl
+    shadow-lg
+    overflow-hidden
+    transition-all
+    duration-200
+    hover:-translate-y-1
+    hover:shadow-x1
+    cursor-pointer
+`;
+
+export const addRecordCard = `
+    bg-slate-800
+    rounded-xl
+    shadow-lg
+    overflow-hidden
+    border-2
+    border-dashed
+    border-slate-600
+    transition-all
+    duration-200
+    hover:-translate-y-1
+    hover:shadow-x1
+    hover:border-slate-400
+    hover:bg-slate-750
+    cursor-pointer
+    flex
+    flex-col
+`;
 
 export const recordSummaryEditButton = `
     absolute

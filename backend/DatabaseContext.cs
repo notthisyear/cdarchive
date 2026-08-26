@@ -1,4 +1,4 @@
-using CdArchiveBackend.Data;
+using CdArchiveBackend.Data.Database;
 using Microsoft.EntityFrameworkCore;
 
 namespace CdArchiveBackend
@@ -6,7 +6,7 @@ namespace CdArchiveBackend
     internal sealed class DatabaseContext(DbContextOptions<DatabaseContext> contextOptions) : DbContext(contextOptions)
     {
         public required DbSet<UserData> Users { get; init; }
-        
+
         public required DbSet<Release> Releases { get; init; }
 
         public required DbSet<Artist> Artists { get; init; }
@@ -17,8 +17,14 @@ namespace CdArchiveBackend
 
         public required DbSet<ReleaseTrack> ReleaseTracks { get; init; }
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.EnableSensitiveDataLogging();
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+
             modelBuilder.Entity<UserData>(entity =>
             {
                 entity.HasKey(x => x.Id);
@@ -29,7 +35,7 @@ namespace CdArchiveBackend
 
             modelBuilder.Entity<Artist>(entity =>
             {
-                entity.HasKey(x => x.Id);            
+                entity.HasKey(x => x.Id);
             });
 
             modelBuilder.Entity<Release>(entity =>
@@ -63,8 +69,8 @@ namespace CdArchiveBackend
 
             modelBuilder.Entity<UserReleases>(entity =>
             {
-                entity.HasKey(x => x.UserId);
-                
+                entity.HasKey(x => new { x.UserId, x.ReleaseId });
+
                 // The entity has a user field keyed on the user ID
                 entity.HasOne(x => x.User)
                 .WithMany()
@@ -95,7 +101,7 @@ namespace CdArchiveBackend
 
             modelBuilder.Entity<ReleaseTrack>(entity =>
             {
-                entity.HasKey(x => new { x.ReleaseId, x.TrackNumber });
+                entity.HasKey(x => new { x.ReleaseId, x.DiscNumber, x.TrackNumber });
                 // The relation betweemn the track and the release is already configured
             });
         }

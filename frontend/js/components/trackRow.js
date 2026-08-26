@@ -16,7 +16,7 @@ export function create(trackTitle, trackNumber, trackDurationSeconds) {
 
         <div class="flex items-center gap-4">
             <span class="text-sm text-slate-500">
-                ${util.getAsColonSeparatedTimeString(trackDurationSeconds)}
+                ${util.getAsColonSeparatedTimeString(trackDurationSeconds, false, true)}
             </span>
 
             <span class="opacity-0

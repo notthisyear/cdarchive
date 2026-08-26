@@ -1,4 +1,4 @@
-﻿using CdArchiveBackend.Data;
+﻿using CdArchiveBackend.Data.Database;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,6 +15,14 @@ namespace CdArchiveBackend.Services
             return await _dbContext.Artists.Where(x => EF.Functions.ILike(x.Name, EscapeLikePattern(name) + "%", @"\"))
                 .ToListAsync()
                 .ConfigureAwait(false);
+        }
+
+        public async Task<long> AddArtist(string name, string coverImage = "")
+        {
+            var newArtist = new Artist() { Name = name, CoverImage = coverImage };
+            _dbContext.Artists.Add(newArtist);
+            _ = await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+            return newArtist.Id;
         }
 
         private static string EscapeLikePattern(string s)

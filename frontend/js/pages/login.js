@@ -169,7 +169,7 @@ export async function render() {
             </div>
         </div>
         `;
-    
+
     root.querySelector("form[id = loginForm]").addEventListener("submit", async (event) => {
         event.preventDefault();
         const username = root.querySelector("input[id = username]").value;
@@ -177,7 +177,7 @@ export async function render() {
 
         try {
             const token = await api.login(username, password);
-            auth.login(token);
+            auth.login(username, token);
             router.navigate("/");
         }
         catch (e) {
@@ -187,14 +187,14 @@ export async function render() {
     });
 
     root.querySelector("button[id = createUserButton]").addEventListener("click", () => {
-            console.log("Navigate to create account");
-            // router.navigate("/register");
-        });
+        console.log("Navigate to create account");
+        // router.navigate("/register");
+    });
 
     root.querySelector("button[id = forgotPasswordButton]").addEventListener("click", () => {
-            console.log("Forgot password");
-            // router.navigate("/forgot-password");
-        });
+        console.log("Forgot password");
+        // router.navigate("/forgot-password");
+    });
 
     root.querySelector("input[id = username]").focus();
 

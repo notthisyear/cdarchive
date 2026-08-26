@@ -4,31 +4,10 @@ import * as Toast from "./toast.js";
 import * as api from "../api.js";
 import * as styles from "../styles.js";
 import * as util from "../util.js";
-import * as trackRow from "./trackRow.js";
-import * as trackEditor from "../components/trackEditor.js";
+import * as trackListing from "../components/trackListing.js";
+import * as confirmArtist from "../components/confirmArtist.js"
 
 import { Autocomplete } from "./autocomplete.js";
-
-const NEW_TRACK_PLACEHOLDER_NAME = "&lt;New Track&gt;"
-
-function noTracksContent() {
-    const div = document.createElement("div");
-    div.className = `rounded-lg
-                    border border-slate-200
-                    dark:border-slate-700
-                    bg-slate-50
-                    dark:bg-slate-900
-                    h-full
-                    text-sm
-                    text-slate-400
-                    flex
-                    items-center
-                    justify-center
-                    px-4`;
-    div.innerHTML = "No tracks added";
-    div.id = "no_tracks"
-    return div;
-}
 
 function wireDurationSegment(input, { next, prev } = {}) {
     input.addEventListener("input", () => {
@@ -92,27 +71,22 @@ export function show() {
                                         placeholder="Album name">
                                 </div>
                                 <div>
-                                    <label for="recordArtist"
-                                        class="${styles.addRecordInputBoxLabel}">
+                                    <label class="${styles.addRecordInputBoxLabel}">
                                         Artist
                                     </label>
-                                    <div class="relative">
-                                        <input id="recordArtist"
-                                            name="artist"
-                                            type="text"
-                                            required
-                                            autocomplete="off"
-                                            class="${styles.editorInputBox} pr-8"
-                                            placeholder="Search for an artist...">
-                                        <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
-                                                    h-4 w-4 text-slate-400"
-                                            viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd"
-                                                d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
-                                                clip-rule="evenodd" />
+
+                                    <div id="artistRows" class="space-y-2"></div>
+
+                                    <button type="button"
+                                            id="addArtistBtn"
+                                            class="mt-2 flex items-center gap-1 text-sm text-slate-400
+                                                hover:text-slate-200 transition">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                         </svg>
-                                        <input type="hidden" id="recordArtistId" name="artistId">
-                                    </div>
+                                        Add artist
+                                    </button>
                                 </div>
                             </div>
 
@@ -125,7 +99,7 @@ export function show() {
                                     <img id="coverImage"
                                         class="w-full h-full object-cover hidden"
                                         alt="Cover art">
-    
+
                                     <div id="coverPlaceholder"
                                         class="text-sm text-slate-400 text-center px-4">
                                         No cover selected
@@ -168,14 +142,14 @@ export function show() {
                                         </svg>
                                     </button>
                                 </div>
-    
+
                                 <input type="file"
                                     id="coverFileInput"
                                     accept="image/*"
                                     class="hidden">
                             </div>
                         </div>
-                        
+
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label for="recordYear"
@@ -193,7 +167,7 @@ export function show() {
                                     class="${styles.editorInputBox}"
                                     placeholder="YYYY">
                             </div>
-    
+
                             <div>
                                 <label class="${styles.addRecordInputBoxLabel}">
                                     Duration
@@ -236,7 +210,7 @@ export function show() {
                         </div>
                     </form>
                 </div>
-            
+
 
                 <!-- Track listing -->
                 <div class="flex flex-col min-h-0">
@@ -245,7 +219,7 @@ export function show() {
                     </h3>
 
                     <div id="trackList" class="flex-1 min-h-0 overflow-y-auto space-y-2 mt-3">
-                        
+
                     </div>
 
                     <button type="button"
@@ -274,8 +248,8 @@ export function show() {
     const albumSearch = root.querySelector("#albumSearch");
     const albumForm = root.querySelector("#albumForm");
     const recordName = root.querySelector("#recordName");
-    const recordArtist = root.querySelector("#recordArtist");
-    const recordArtistId = root.querySelector("#recordArtistId");
+    const artistRows = root.querySelector("#artistRows");
+    const addArtistBtn = root.querySelector("#addArtistBtn");
     const recordYear = root.querySelector("#recordYear");
     const recordSpotifyUrl = root.querySelector("#recordSpotifyUrl");
     const durationHours = root.querySelector("#durationHours");
@@ -290,61 +264,128 @@ export function show() {
     const formLoadingOverlay = root.querySelector("#formLoadingOverlay");
 
     const trackList = root.querySelector("#trackList");
-    trackList.append(noTracksContent());
+    trackListing.clearAllTracks(trackList);
 
-    // Track management
-    let nextTrackId = 0;
-    const tracksMap = new Map();
+    const autocompletes = new Map();
+    let nextArtistBoxId = 0;
 
-    function createTrackRow(title, trackNumber, durationSeconds) {
-        const row = trackRow.create(title, trackNumber, durationSeconds);
-        const trackId = nextTrackId++;
-        tracksMap.set(trackId, { title: title, trackNumber: trackNumber, durationSeconds: durationSeconds });
-        row.addEventListener("click", () => {
-            trackEditor.show(title === NEW_TRACK_PLACEHOLDER_NAME ? "" : title,
-                trackNumber,
-                durationSeconds,
-                (newTitle, newTrackNumber, newDuration) => { updateTrackRow(trackId, row, createTrackRow(newTitle, newTrackNumber, newDuration)); },
-                () => { removeTrackRow(trackId, row); });
+    // Artist rows
+    function removeArtistRow(boxId, row) {
+        const container = row.parentElement;
+        row.remove();
+        autocompletes.delete(boxId);
+        updateRemoveButtonVisibility(container);
+    }
+
+    function createArtistRow(value = "") {
+        const row = document.createElement("div");
+        row.className = "artist-row group relative flex items-center gap-2";
+        row.innerHTML = `
+            <div class="relative flex-1">
+                <input type="text"
+                    class="artist-name-input ${styles.editorInputBox} w-full pr-8"
+                    autocomplete="off"
+                    required
+                    placeholder="Search for an artist...">
+                <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
+                            h-4 w-4 text-slate-400"
+                    viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd"
+                        d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                        clip-rule="evenodd" />
+                </svg>
+                <input type="hidden" class="artist-id-input">
+            </div>
+
+            <button type="button"
+                    class="remove-artist-btn shrink-0 w-6 h-6 rounded-full
+                        flex items-center justify-center
+                        text-slate-500 hover:text-white hover:bg-red-500
+                        opacity-0 group-hover:opacity-100 focus:opacity-100
+                        transition"
+                    aria-label="Remove artist"
+                    title="Remove artist">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+            </button>
+        `;
+
+        const nameInput = row.querySelector(".artist-name-input");
+        const idInput = row.querySelector(".artist-id-input");
+
+        nameInput.addEventListener("input", () => {
+            idInput.value = "";
         });
+
+        const boxId = nextArtistBoxId++;
+        autocompletes.set(boxId, new Autocomplete({
+            input: nameInput,
+            search: query => {
+                return [
+                    { "name": "some artist" },
+                    { "name": "Kiss" },
+                    { "name": "Eagles" }
+                ];
+            },
+            renderItem(artist) {
+                return `<div class="font-medium">${artist.name}</div>`;
+            },
+            onSelected(artist) {
+                nameInput.value = artist.name;
+                idInput.value = artist.id;
+            }
+        }));
+
+        row.querySelector(".remove-artist-btn").addEventListener("click", () => {
+            removeArtistRow(boxId, row);
+        });
+
+        if (value !== "") {
+            nameInput.value = value;
+        }
         return row;
     }
 
-    function addTrackRow(title, trackNumber, durationSeconds) {
-        const row = createTrackRow(title, trackNumber, durationSeconds);
-        trackList.appendChild(row);
+    function updateRemoveButtonVisibility(container) {
+        const rows = container.querySelectorAll(".artist-row");
+        // Don't allow removing the last remaining artist row.
+        rows.forEach(row => {
+            const btn = row.querySelector(".remove-artist-btn");
+            btn.classList.toggle("hidden", rows.length === 1);
+        });
     }
 
-    function getTrackCount() {
-        return trackList.querySelectorAll(".track-row").length;
+    function initArtistRows() {
+        // Start with a single artist row.
+        artistRows.append(createArtistRow());
+        updateRemoveButtonVisibility(artistRows);
+
+        addArtistBtn.addEventListener("click", () => {
+            artistRows.append(createArtistRow());
+            updateRemoveButtonVisibility(artistRows);
+        });
     }
 
-    function removeTrackRow(trackId, row) {
-        row.remove();
-        tracksMap.delete(trackId);
-        if (getTrackCount() === 0) {
-            trackList.innerHTML = "";
-            trackList.append(noTracksContent());
-        }
+    function getArtists(root) {
+        const rows = root.querySelectorAll(".artist-row");
+        return Array.from(rows).map(row => ({
+            name: row.querySelector(".artist-name-input").value.trim(),
+            id: row.querySelector(".artist-id-input").value || null,
+        })).filter(a => a.name.length > 0);
     }
 
-    function updateTrackRow(oldTrackId, oldRow, newRow) {
-        trackList.replaceChild(newRow, oldRow);
-        tracksMap.delete(oldTrackId);
-    }
-
-    // Function to get current form state
     function getState() {
         return {
             name: recordName.value,
-            artistName: recordArtist.value,
+            artistName: getArtists(root),
             year: recordYear.value,
             durationHours: durationHours.value,
             durationMinutes: durationMinutes.value,
             durationSeconds: durationSeconds.value,
             spotifyUrl: recordSpotifyUrl.value,
             coverImage: coverImage.src,
-            tracks: [...tracksMap.values()].map(x => x)
+            tracks: trackListing.getAllTracks()
         };
     }
 
@@ -383,45 +424,14 @@ export function show() {
     });
 
     removeCoverBtn.addEventListener("click", () => {
-        // Hook your own delete logic here too (e.g. telling the backend
-        // to drop a previously-uploaded cover) if the image didn't just
-        // come from the file picker above.
+        // TODO: Hook some backend logic here to delete from image store
         clearCoverImage();
     });
 
-    // Artist autocomplete
-    const artistSearchAutocomplete = new Autocomplete({
-        input: recordArtist,
-        search: query => {
-            return [
-                {
-                    "name": "some artist",
-                    "imageUrl": "some url"
-                },
-                {
-                    "name": "Kiss",
-                    "imageUrl": "some url"
-                },
-                {
-                    "name": "Eagles",
-                    "imageUrl": "some url"
-                }];
-        },
-        renderItem(artist) {
-            return `
-                <img src="${artist.imageUrl}"
-                     class="w-8 h-8 rounded-full object-cover">
-                <div class="font-medium">${artist.name}</div>
-            `;
-        },
-        onSelected(artist) {
-            recordArtist.value = artist.name;
-            recordArtistId.value = artist.id;
-        }
-    });
+    initArtistRows();
 
     // Album autocomplete
-    const albumSearchAutocomplete = new Autocomplete({
+    autocompletes.set(nextArtistBoxId++, new Autocomplete({
         input: albumSearch,
         search: async (q) => await api.searchOnSpotify(q, "album", 5, 0, (b) => {
             return b.albums.total > 0 ? b.albums.items : [];
@@ -446,10 +456,8 @@ export function show() {
         },
         async onSelected(album) {
             const albumInfo = await api.getSpotifyAlbum(album.id);
-            trackList.innerHTML = "";
 
             recordName.value = albumInfo.name ?? "";
-            recordArtist.value = util.concatenateArtists(albumInfo.artists ?? "name");
             recordYear.value = albumInfo.release_date?.slice(0, 4) ?? "";
             recordSpotifyUrl.value = albumInfo.external_urls?.spotify ?? "";
 
@@ -457,12 +465,20 @@ export function show() {
                 setCoverImage(album.images.at(0).url);
             }
 
+            artistRows.innerHTML = "";
+            if (albumInfo.artists) {
+                for (const artist of albumInfo.artists) {
+                    artistRows.append(createArtistRow(artist.name));
+                }
+            }
+
+            trackListing.clearAllTracks(trackList);
             if (albumInfo.tracks) {
                 let totalDurationSeconds = 0;
                 for (const track of albumInfo.tracks.items) {
                     const durationSeconds = Math.round(track.duration_ms / 1000);
                     totalDurationSeconds += durationSeconds;
-                    addTrackRow(track.name, track.track_number, durationSeconds);
+                    trackListing.addTrackRow(trackList, track.name, track.disc_number, track.track_number, durationSeconds);
                 }
                 const parts = util.getPartsFromSeconds(totalDurationSeconds);
 
@@ -474,20 +490,13 @@ export function show() {
                     durationSeconds.value = parts.seconds;
             }
 
-            albumSearch.value = `${recordArtist.value} - ${recordName.value}`;
+            albumSearch.value = `${util.concatenateArtists(albumInfo.artists ?? "name")} - ${recordName.value}`;
         }
-    });
+    }));
 
     // Track listing
     root.querySelector("#addTrackBtn").addEventListener("click", () => {
-        const trackCount = getTrackCount();
-        if (trackCount === 0) {
-            trackList.innerHTML = "";
-            addTrackRow(NEW_TRACK_PLACEHOLDER_NAME, 1, 0);
-        }
-        else {
-            addTrackRow(NEW_TRACK_PLACEHOLDER_NAME, trackCount + 1, 0);
-        }
+        trackListing.addEmptyTrackRow(trackList);
     });
 
     // Loading overlays
@@ -501,15 +510,16 @@ export function show() {
         formLoadingOverlay.classList.remove("opacity-100", "pointer-events-auto");
     }
 
-    // Actual form
     function disposeAutocompletes() {
-        albumSearchAutocomplete.dispose();
-        artistSearchAutocomplete.dispose();
+        for (const autocomplete in autocompletes.values())
+            autocomplete.dispose();
+        autocompletes.clear();
     }
 
     let previousState = JSON.stringify(getState());
     let blockFormClose = false;
 
+    // Actual form
     Modal.show({
         title: "Add Record",
         content: root,
@@ -517,12 +527,39 @@ export function show() {
         buttons: [
             {
                 "type": "save",
-                "action": () => {
+                "action": async () => {
                     if (!albumForm.reportValidity()) {
                         return false;
                     }
 
                     previousState = JSON.stringify(getState());
+                    blockFormClose = true;
+                    showLoadingOverlay();
+
+                    // First, we fetch artist information
+                    let artistData;
+                    try {
+                        artistData = (await api.getArtists(getArtists(root))).result;
+                        console.log(artistData);
+                    }
+                    catch (e) {
+                        Toast.error(`Could not add record - ${e}`, "Adding record failed");
+                        hideLoadingOverlay();
+                        blockFormClose = false;
+                        return false;
+                    }
+
+                    const resolution = await confirmArtist.confirm(artistData);
+
+                    if (resolution === null) {
+                        hideLoadingOverlay();
+                        blockFormClose = false;
+                        return false;
+                    }
+
+                    const resolvedArtists = artistNames.map(name => resolution[name]);
+                    console.log(resolvedArtists);
+
                     const duration = [
                         durationHours.value,
                         durationMinutes.value,
@@ -532,23 +569,21 @@ export function show() {
                     const newRecordRequest = {
                         summary: {
                             name: recordName.value,
-                            artists: [
-                                {
-                                    name: recordArtist.value
-                                }
-                            ],
+                            artists: resolvedArtists.map(x =>
+                            ({
+                                id: x.type === "new" ? null : x.id,
+                                name: x.name
+                            })),
                             year: recordYear.value,
                             imageUrl: coverImage.src,
                             spotifyLink: recordSpotifyUrl.value,
                         },
                         durationSeconds: util.parseDurationToSeconds(duration),
-                        tracks: [...tracksMap.values()].map(x => x)
+                        tracks: trackListing.getAllTracks()
                     };
 
-                    blockFormClose = true;
-                    showLoadingOverlay();
                     try {
-                        api.addNewRecord(newRecordRequest);
+                        await api.tryAddNewRecord(newRecordRequest)
                         Toast.success(`Record '${recordName.value}' added successful`, "New record added");
                     }
                     catch (e) {

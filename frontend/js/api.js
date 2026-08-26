@@ -28,6 +28,12 @@ async function fetchFromUrl(url, options = {}) {
     return response;
 }
 
+export async function getTotalNumberOfRecords() {
+    const url = new URL("/api/records/total", window.location.origin);
+    const response = await fetchFromUrl(url);
+    return (await response.json()).total;
+}
+
 export async function getRecordsSummary(offset, limit) {
     const url = new URL("/api/records", window.location.origin);
     url.searchParams.set("offset", offset);
@@ -60,16 +66,27 @@ export async function getRecord(recordId) {
     return (await response.json()).record;
 }
 
-export async function addNewRecord(record) {
-    const url = new URL("/api/records", window.location.origin);
+export async function getArtists(artists) {
+    const url = new URL("/api/artists", window.location.origin);
     const response = await fetchFromUrl(url, {
+        method: "QUERY",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(artists)
+    });
+    return await response.json();
+}
+
+export async function tryAddNewRecord(record) {
+    const url = new URL("/api/records/add", window.location.origin);
+    await fetchFromUrl(url, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
         },
         body: JSON.stringify(record)
     });
-    return (await response.json());
 }
 
 export async function getSpotifyDisplayName() {

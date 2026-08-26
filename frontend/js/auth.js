@@ -1,10 +1,11 @@
 import * as util from "./util.js";
 
 const SPOTIFY_CLIENT_ID = "5440e7fafc7c4bde90a87b8feb32d3bb";
-const SPOTIFY_REDIRECT_URI = "https://172.18.41.100";
+const SPOTIFY_REDIRECT_URI = "https://127.0.0.1";
 const SPOTIFY_TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
 
 let token = localStorage.getItem("token");
+let username = localStorage.getItem("username")
 let spotifyToken = localStorage.getItem("spotifyToken");
 let spotifyRefreshToken = localStorage.getItem("spotifyRefreshToken");
 let spotifyTokenExpiresAt = localStorage.getItem("spotifyTokenExpiresAt");
@@ -21,9 +22,15 @@ export function getToken() {
     return token;
 }
 
-export function login(jwt) {
+export function getUsername() {
+    return username;
+}
+
+export function login(username, jwt) {
     token = jwt;
+    username = username;
     localStorage.setItem("token", jwt);
+    localStorage.setItem("username", username)
 }
 
 export function logout() {
@@ -37,6 +44,8 @@ export function getSpotifyToken() {
 }
 
 export function clearSpotifyTokens() {
+    console.log("spotify tokens cleared");
+
     spotifyToken = null;
     spotifyRefreshToken = null;
     spotifyTokenExpiresAt = null;
@@ -72,6 +81,7 @@ export async function redirectToSpotifyAuthorization() {
 
 export async function acquireSpotifyTokens(code) {
     const codeVerifier = localStorage.getItem("codeVerifier");
+    console.log(`codeVerifier: ${codeVerifier}`);
     const payload = {
         method: "POST",
         headers: {
@@ -99,12 +109,13 @@ export async function verifySpotifyToken() {
     if (spotifyToken && spotifyTokenExpiresAt && (parseInt(spotifyTokenExpiresAt) > Date.now()))
         return;
 
-    if (spotifyRefreshToken) {
-        console.log("refreshing token: ", spotifyRefreshToken);
+    if (spotifyRefreshToken != null) {
+        console.log("refresh token: ", spotifyRefreshToken);
         if (await refreshSpotifyToken())
             return;
     }
 
+    console.log(`fell to the bottom of verifySpotifyToken, spotifyRefreshToken: ${spotifyRefreshToken}`);
     clearSpotifyTokens();
 }
 
@@ -124,6 +135,7 @@ async function refreshSpotifyToken() {
     const result = await fetch(SPOTIFY_TOKEN_ENDPOINT, payload);
     const response = await result.json();
 
+    console.log(`refresh result: ${result}, refresh response: ${response}`);
     if (result.ok)
         storeTokens(response.access_token, response.refresh_token, response.expires_in);
 

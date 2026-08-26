@@ -8,13 +8,11 @@ using System.Security.Claims;
 
 namespace CdArchiveBackend.Endpoints
 {
-    internal sealed class GetRecordEndpoint : IEndpoint
+    internal sealed class GetTotalNumberOfRecords : IEndpoint
     {
-        internal const string EndpointName = "GetRecords";
-
         public void AddEndpoint(RouteGroupBuilder groupBuilder)
         {
-            groupBuilder.MapGet("/{releaseId}", async (int releaseId, ClaimsPrincipal user, RecordsService recordsService) =>
+            groupBuilder.MapGet("/total", async (ClaimsPrincipal user, RecordsService recordsService) =>
             {
                 if (!int.TryParse(
                     user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
@@ -27,17 +25,16 @@ namespace CdArchiveBackend.Endpoints
 
                 try
                 {
-                    var record = await recordsService.GetRecordData(userId, releaseId).ConfigureAwait(false);
                     return Results.Ok(new
                     {
-                        record
+                        total = await recordsService.GetTotalNumberOfRecordsForUser(userId).ConfigureAwait(false)
                     });
                 }
                 catch (Exception)
                 {
-                    return Results.InternalServerError("Could not fetch record data");
+                    return Results.InternalServerError("Could not fetch record collection");
                 }
-            }).WithName(EndpointName);
+            }).RequireAuthorization();
         }
     }
 }

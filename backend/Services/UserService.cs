@@ -1,5 +1,5 @@
 ﻿using CdArchiveBackend.Common;
-using CdArchiveBackend.Data;
+using CdArchiveBackend.Data.Database;
 using CdArchiveBackend.Data.DTO;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.Tasks;

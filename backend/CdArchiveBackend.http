@@ -1,4 +1,4 @@
-@CdArchiveBackend_HostAddress = https://172.18.41.100
+@CdArchiveBackend_HostAddress = https://127.0.0.1
 
 GET {{CdArchiveBackend_HostAddress}}/api
 
@@ -12,3 +12,6 @@ Content-Type: application/json
 
 ###
 GET {{CdArchiveBackend_HostAddress}}/api/records
+
+###
+GET {{CdArchiveBackend_HostAddress}}/debug/routes

@@ -11,7 +11,7 @@ namespace CdArchiveBackend
 {
     public class Program
     {
-        private const string GetRecordEndpoint = "GetRecord";
+        private const string ImageStoreConfigurationKey = "ImageStore";
 
         public static void Main(string[] args)
         {
@@ -37,6 +37,8 @@ namespace CdArchiveBackend
             builder.Services.AddScoped<RecordsService>();
             builder.Services.AddScoped<ArtistService>();
 
+            // builder.Services.AddSingleton(new RequestStore<ArtistRequestEntry>(60_000));
+
             var app = builder.Build();
 
             app.UseAuthentication();
@@ -44,7 +46,7 @@ namespace CdArchiveBackend
 
             // Endpoints
             List<EndpointGroupBase> endpointGroups = [];
-            
+
             var authEndpointGroup = new EndpointGroupBase("/auth");
             authEndpointGroup.AddEndpoint(new LoginEndpoint());
             endpointGroups.Add(authEndpointGroup);
@@ -52,8 +54,13 @@ namespace CdArchiveBackend
             var recordsEndpointGroup = new EndpointGroupBase("/records", useAuthorization: true);
             recordsEndpointGroup.AddEndpoint(new GetRecordsEndpoint());
             recordsEndpointGroup.AddEndpoint(new GetRecordEndpoint());
-            recordsEndpointGroup.AddEndpoint(new CreateRecordEndpoint());
+            recordsEndpointGroup.AddEndpoint(new AddRecordEndpoint(configuration[ImageStoreConfigurationKey] ?? string.Empty));
+            recordsEndpointGroup.AddEndpoint(new GetTotalNumberOfRecords());
             endpointGroups.Add(recordsEndpointGroup);
+
+            var artistsEndpointGroup = new EndpointGroupBase("/artists", useAuthorization: true);
+            artistsEndpointGroup.AddEndpoint(new GetArtistsEndpoint());
+            endpointGroups.Add(artistsEndpointGroup);
 
             foreach (var endpointGroup in endpointGroups)
                 endpointGroup.AddEndpoints(app);

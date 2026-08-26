@@ -42,24 +42,25 @@ export async function create() {
     `;
 
     nav.querySelector("button[id = logoutButton]").addEventListener("click", async (event) => {
-            event.preventDefault();
-            auth.logout();
-            router.navigate("/")
-            // TODO: Some sort of "Are you sure" when editing/adding a record
-        });
+        event.preventDefault();
+        auth.logout();
+        router.navigate("/")
+        // TODO: Some sort of "Are you sure" when editing/adding a record
+    });
 
-         nav.querySelector("button[id = addRecordButton]").addEventListener("click", async (event) => {
-            addRecordForm.show();
-        });
+    nav.querySelector("button[id = addRecordButton]").addEventListener("click", async () => {
+        addRecordForm.show();
+    });
 
     const widget = spotifyStatus.mount(nav.querySelector("div[id = spotifyStatusIndicator]"),
-    {
-        initialState: { connected: auth.hasSpotifyToken() },
-        onDisconnect: () => {
-            auth.clearSpotifyTokens();
-            widget.setDisconnected();
-        }
-    });
+        {
+            initialState: { connected: auth.hasSpotifyToken() },
+            onDisconnect: () => {
+                console.log("inside onDisconnect in navbar");
+                auth.clearSpotifyTokens();
+                widget.setDisconnected();
+            }
+        });
 
     if (auth.hasSpotifyToken()) {
         const name = await api.getSpotifyDisplayName();

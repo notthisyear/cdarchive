@@ -1,4 +1,4 @@
-﻿using CdArchiveBackend.Data;
+﻿using CdArchiveBackend.Data.Database;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System;
@@ -19,7 +19,7 @@ namespace CdArchiveBackend.Services
         private const string JwtSectionIssuerName = "Issuer";
         private const string JwtSectionAudienceName = "Audience";
         private const string JwtSectionExpiryTimeMinutesName = "TokenLifetimeMinutes";
-        private const string ApiSigningKeyName= "API:SigningKey";
+        private const string ApiSigningKeyName = "API:SigningKey";
 
         public JwtService(IConfiguration configuration)
         {

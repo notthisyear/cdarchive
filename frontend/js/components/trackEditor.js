@@ -2,11 +2,25 @@ import * as Modal from "./modal.js";
 import * as styles from "../styles.js";
 import * as util from "../util.js";
 
-export function show(title, number, durationSeconds, saveAction, deleteAction) {
+export function show(title, discNumber, trackNumber, durationSeconds, saveAction, deleteAction) {
     const form = document.createElement("form");
     form.innerHTML = `
                 <form id="trackEditorForm"
                       class="space-y-5">
+                    <div>
+                        <label class="${styles.editorInputBoxLabel}">
+                            Disc number
+                        </label>
+
+                        <input id="discNumber"
+                               type="number"
+                               placeholder="Disc number"
+                               min="1"
+                               value="${discNumber}"
+                               required
+                               class="${styles.editorInputBox}">
+                    </div>
+
                     <div>
                         <label class="${styles.editorInputBoxLabel}">
                             Track number
@@ -16,7 +30,7 @@ export function show(title, number, durationSeconds, saveAction, deleteAction) {
                                type="number"
                                placeholder="Track number"
                                min="1"
-                               value="${number}"
+                               value="${trackNumber}"
                                required
                                class="${styles.editorInputBox}">
                     </div>
@@ -53,10 +67,11 @@ export function show(title, number, durationSeconds, saveAction, deleteAction) {
         </div>
     `;
 
-    const trackNumber = form.querySelector("#trackNumber");
-    const trackTitle = form.querySelector("#trackTitle");
-    const trackDuration = form.querySelector("#trackDuration");
-    trackDuration.addEventListener("input", validateDuration);
+    const discNumberElement = form.querySelector("#discNumber");
+    const trackNumberElement = form.querySelector("#trackNumber");
+    const trackTitleElement = form.querySelector("#trackTitle");
+    const trackDurationElement = form.querySelector("#trackDuration");
+    trackDurationElement.addEventListener("input", validateDuration);
 
     Modal.show({
         title: "Edit Track",
@@ -67,18 +82,22 @@ export function show(title, number, durationSeconds, saveAction, deleteAction) {
                 "type": "delete",
                 "action": () => {
                     if (deleteAction)
-                        deleteAction(title, number, durationSeconds);
+                        deleteAction();
                     return true;
                 }
             },
             {
                 "type": "close",
                 "action": async () => {
-                    const hasUnsavedChanged = (number !== Number(trackNumber.value)) ||
-                        (title !== trackTitle.value) ||
-                        (util.getAsColonSeparatedTimeString(durationSeconds) !== trackDuration.value);
+                    const hasUnsavedChanged =
+                        (discNumber !== Number(discNumberElement.value)) ||
+                        (trackNumber !== Number(trackNumberElement.value)) ||
+                        (title !== trackTitleElement.value) ||
+                        (util.getAsColonSeparatedTimeString(durationSeconds) !== trackDurationElement.value);
+
                     if (hasUnsavedChanged)
                         return await Modal.confirm("Unsaved changes", "Do you want to discard unsaved changes?");
+
                     return true;
                 }
             },
@@ -89,7 +108,7 @@ export function show(title, number, durationSeconds, saveAction, deleteAction) {
                         return false;
 
                     if (saveAction)
-                        saveAction(trackTitle.value, Number(trackNumber.value), util.parseDurationToSeconds(trackDuration.value));
+                        saveAction(trackTitleElement.value, Number(discNumberElement.value), Number(trackNumberElement.value), util.parseDurationToSeconds(trackDurationElement.value));
 
                     return true;
                 }

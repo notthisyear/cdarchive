@@ -3,13 +3,12 @@ using System.Collections.Generic;
 
 namespace CdArchiveBackend.Data.DTO
 {
-    public readonly record struct ArtistNameOnly(string Name);
 
-    public readonly record struct Summary(string Name, List<ArtistNameOnly> Artists, int Year, string? ImageUrl, string? SpotifyLink);
+    public readonly record struct Summary(string Name, List<Artist> Artists, int Year, string? ImageUrl, string? SpotifyLink);
 
-    public readonly record struct Track(string Title, int TrackNumber, int DurationSeconds);
+    public readonly record struct Track(string Title, int DiscNumber, int TrackNumber, int DurationSeconds);
 
-    public readonly record struct RecordData(Summary Summary, int DurationSeconds, List<Track> Tracks)
+    public readonly record struct ReleaseData(long? Id, Summary Summary, int DurationSeconds, List<Track> Tracks)
     {
         public bool Validate()
         {
@@ -35,6 +34,9 @@ namespace CdArchiveBackend.Data.DTO
                     if (string.IsNullOrEmpty(track.Title))
                         return false;
 
+                    if (track.DiscNumber < 1)
+                        return false;
+
                     if (track.TrackNumber < 1)
                         return false;
 
@@ -48,21 +50,27 @@ namespace CdArchiveBackend.Data.DTO
 
         public readonly void DebugPrint()
         {
+            Console.WriteLine($"Id: {Id}");
             Console.WriteLine("Summary:");
             Console.WriteLine($"\tName: {Summary.Name}");
             Console.WriteLine($"\tYear: {Summary.Year}");
             Console.WriteLine($"\tImageUrl: {Summary.ImageUrl}");
             Console.WriteLine($"\tSpotifyLink: {Summary.SpotifyLink}");
-            
+
             Console.WriteLine("\tArtists:");
             foreach (var artist in Summary.Artists)
+            {
+                Console.WriteLine($"\t\tId: {artist.Id}");
                 Console.WriteLine($"\t\tName: {artist.Name}");
-            
+                Console.WriteLine($"\t\tImageUrl: {artist.ImageUrl}");
+            }
+
             Console.WriteLine($"LengthSeconds: {DurationSeconds}");
 
             Console.WriteLine("Tracks:");
             foreach (var track in Tracks)
             {
+                Console.WriteLine($"\t\tDiscNumber: {track.DiscNumber}");
                 Console.WriteLine($"\t\tTrackNumber: {track.TrackNumber}");
                 Console.WriteLine($"\t\tTitle: {track.Title}");
                 Console.WriteLine($"\t\tDurationSeconds: {track.DurationSeconds}\n");

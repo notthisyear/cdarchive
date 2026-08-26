@@ -139,6 +139,7 @@ export function show(options) {
     });
 
     dialog.focus();
+    return modal;
 }
 
 export async function confirm(title, message) {
