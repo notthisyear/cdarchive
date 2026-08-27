@@ -1,3 +1,5 @@
+using CdArchiveBackend.Common;
+using CdArchiveBackend.Common.HttpWrappers;
 using CdArchiveBackend.Endpoints;
 using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -6,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
+using System.Net.Http;
 
 namespace CdArchiveBackend
 {
@@ -36,7 +39,12 @@ namespace CdArchiveBackend
             builder.Services.AddScoped<UserService>();
             builder.Services.AddScoped<RecordsService>();
             builder.Services.AddScoped<ArtistService>();
-
+            builder.Services.AddSingleton(
+                new ImageDownloadService(
+                    new FileSystem(),
+                    () => new HttpClientWrapper(new HttpClient()),
+                    configuration[ImageStoreConfigurationKey] ?? string.Empty)
+                );
             // builder.Services.AddSingleton(new RequestStore<ArtistRequestEntry>(60_000));
 
             var app = builder.Build();
@@ -54,7 +62,7 @@ namespace CdArchiveBackend
             var recordsEndpointGroup = new EndpointGroupBase("/records", useAuthorization: true);
             recordsEndpointGroup.AddEndpoint(new GetRecordsEndpoint());
             recordsEndpointGroup.AddEndpoint(new GetRecordEndpoint());
-            recordsEndpointGroup.AddEndpoint(new AddRecordEndpoint(configuration[ImageStoreConfigurationKey] ?? string.Empty));
+            recordsEndpointGroup.AddEndpoint(new AddRecordEndpoint());
             recordsEndpointGroup.AddEndpoint(new GetTotalNumberOfRecords());
             endpointGroups.Add(recordsEndpointGroup);
 

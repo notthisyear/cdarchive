@@ -76,7 +76,6 @@ namespace CdArchiveBackend.Common
             catch (OperationCanceledException) { }
         }
 
-
         #region Disposal
         public async ValueTask DisposeAsync()
         {
