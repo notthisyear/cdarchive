@@ -1,11 +1,13 @@
 import * as Modal from "./modal.js";
 import * as Toast from "./toast.js";
 
+import * as auth from "../auth.js";
 import * as api from "../api.js";
 import * as styles from "../styles.js";
 import * as util from "../util.js";
 import * as trackListing from "../components/trackListing.js";
 import * as confirmArtist from "../components/confirmArtist.js"
+import * as addArtistForm from "../components/addArtistForm.js"
 
 import { Autocomplete } from "./autocomplete.js";
 
@@ -30,7 +32,7 @@ export function show() {
     const root = document.createElement("div");
     root.innerHTML = `
         <div id="addRecordDialog"
-            class="flex flex-col max-h-[80vh] overflow-hidden space-y-6">
+             class="flex flex-col max-h-[80vh] overflow-hidden space-y-6">
 
             <!-- Search section -->
             <section class="space-y-4 shrink-0">
@@ -38,8 +40,8 @@ export function show() {
                     <input id="albumSearch"
                            class="${styles.editorInputBox} w-full"
                            type="text"
-                           placeholder="Search Spotify...">
-                    </div>
+                           placeholder="Search Spotify..." />
+                </div>
             </section>
 
             <!-- Album info and track listing-->
@@ -263,13 +265,20 @@ export function show() {
     const uploadCoverOverlayBtn = root.querySelector("#uploadCoverOverlayBtn");
     const formLoadingOverlay = root.querySelector("#formLoadingOverlay");
 
+    if (!auth.hasSpotifyToken()) {
+        albumSearch.disabled = true;
+        albumSearch.placeholder = "Log in to Spotify to search";
+    }
+
     const trackList = root.querySelector("#trackList");
     trackListing.clearAllTracks(trackList);
 
     const autocompletes = new Map();
     let nextArtistBoxId = 0;
 
-    // Artist rows
+    // Artists
+    const ADD_NEW_SENTINEL = { __addNew: true };
+
     function removeArtistRow(boxId, row) {
         const container = row.parentElement;
         row.remove();
@@ -277,24 +286,118 @@ export function show() {
         updateRemoveButtonVisibility(container);
     }
 
+    function attachArtistAutocomplete(boxId, row) {
+        const nameInput = row.querySelector(".artist-name-input");
+        const idInput = row.querySelector(".artist-id-input");
+        const toggleBtn = row.querySelector(".artist-dropdown-toggle");
+
+        const autocomplete = new Autocomplete({
+            input: nameInput,
+            search: async (q) => {
+                let results = [];
+                const queryString = q.trim();
+                if (queryString.length > 0) {
+                    try {
+                        const response = await api.getArtists([{ name: queryString, id: null }]);
+                        results = response[queryString];
+                    }
+                    catch (e) {
+                        console.error(e);
+                        results = [];
+                    }
+
+                    idInput.value = results.length === 1 ? results[0].id : "";
+                    updateArtistStatus(row);
+                }
+                return [...results, ADD_NEW_SENTINEL];
+            },
+            renderItem(item) {
+                if (item.__addNew) {
+                    return `<div class="px-3 py-2 text-sm text-blue-400 hover:bg-slate-700
+                                   cursor-pointer border-slate-700">
+                            Add new...
+                        </div>`;
+                }
+                return `<div class="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer">${item.name}</li>`;
+            },
+            async onSelected(item) {
+                if (item.__addNew) {
+                    const result = await addArtistForm.show();
+                    if (result !== null) {
+                        nameInput.value = result.name;
+                        idInput.value = "new";
+                    }
+                }
+                else {
+                    nameInput.value = item.name;
+                    idInput.value = item.id;
+                }
+
+                updateArtistStatus(row);
+            }
+        });
+
+        autocompletes.set(boxId, autocomplete);
+
+        toggleBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (autocomplete.isOpen)
+                autocomplete.hide();
+            else
+                autocomplete.open();
+        });
+    }
+
+    function updateArtistStatus(row) {
+        const idInput = row.querySelector(".artist-id-input");
+        const resolved = idInput.value.trim().length > 0;
+
+        row.querySelector(".status-resolved").classList.toggle("hidden", !resolved);
+        row.querySelector(".status-unresolved").classList.toggle("hidden", resolved);
+    }
+
     function createArtistRow(value = "") {
         const row = document.createElement("div");
         row.className = "artist-row group relative flex items-center gap-2";
         row.innerHTML = `
+            <div class="artist-status shrink-0 w-5 h-5 flex items-center justify-center" title="">
+                
+            <!-- Yellow exclamation (default / unresolved) -->
+                <svg class="status-unresolved w-5 h-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.743 2.987H3.482c-1.53 0-2.493-1.653-1.743-2.987l6.518-11.59zM10 13a1 1 0 100-2 1 1 0 000 2zm-.75-6.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z"
+                        clip-rule="evenodd" />
+                </svg>
+                
+                <!-- Green checkmark (resolved) -->
+                <svg class="status-resolved hidden w-5 h-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd"
+                        d="M16.704 5.29a1 1 0 010 1.415l-7.004 7a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 111.414-1.414l2.793 2.792 6.296-6.293a1 1 0 011.415 0z"
+                        clip-rule="evenodd" />
+                </svg>
+            </div>
             <div class="relative flex-1">
                 <input type="text"
                     class="artist-name-input ${styles.editorInputBox} w-full pr-8"
                     autocomplete="off"
                     required
                     placeholder="Search for an artist...">
-                <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
-                            h-4 w-4 text-slate-400"
-                    viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
-                        clip-rule="evenodd" />
-                </svg>
+               <button type="button"
+                       class="artist-dropdown-toggle absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 hover:text-slate-200"
+                       tabindex="-1"
+                       aria-label="Show artist options">
+                    <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd"
+                              d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                              clip-rule="evenodd" />
+                    </svg>
+                </button>
                 <input type="hidden" class="artist-id-input">
+
+                 <ul class="artist-dropdown hidden absolute left-0 right-0 top-full mt-1 z-20
+                       bg-slate-800 border border-slate-700 rounded-lg shadow-lg
+                       max-h-56 overflow-y-auto">
+                </ul>
             </div>
 
             <button type="button"
@@ -314,28 +417,14 @@ export function show() {
         const nameInput = row.querySelector(".artist-name-input");
         const idInput = row.querySelector(".artist-id-input");
 
+        // If the user writes in the name box, clear out the ID field
         nameInput.addEventListener("input", () => {
             idInput.value = "";
         });
 
         const boxId = nextArtistBoxId++;
-        autocompletes.set(boxId, new Autocomplete({
-            input: nameInput,
-            search: query => {
-                return [
-                    { "name": "some artist" },
-                    { "name": "Kiss" },
-                    { "name": "Eagles" }
-                ];
-            },
-            renderItem(artist) {
-                return `<div class="font-medium">${artist.name}</div>`;
-            },
-            onSelected(artist) {
-                nameInput.value = artist.name;
-                idInput.value = artist.id;
-            }
-        }));
+        attachArtistAutocomplete(boxId, row);
+        updateArtistStatus(row);
 
         row.querySelector(".remove-artist-btn").addEventListener("click", () => {
             removeArtistRow(boxId, row);
@@ -523,7 +612,7 @@ export function show() {
     Modal.show({
         title: "Add Record",
         content: root,
-        maxWidthClass: "max-w-4xl",
+        maxWidthClass: "max-w-7/10",
         buttons: [
             {
                 "type": "save",
@@ -539,8 +628,7 @@ export function show() {
                     // First, we fetch artist information
                     let artistData;
                     try {
-                        artistData = (await api.getArtists(getArtists(root))).result;
-                        console.log(artistData);
+                        artistData = await api.getArtists(getArtists(root));
                     }
                     catch (e) {
                         Toast.error(`Could not add record - ${e}`, "Adding record failed");
@@ -558,7 +646,6 @@ export function show() {
                     }
 
                     const resolvedArtists = artistNames.map(name => resolution[name]);
-                    console.log(resolvedArtists);
 
                     const duration = [
                         durationHours.value,
@@ -583,7 +670,7 @@ export function show() {
                     };
 
                     try {
-                        await api.tryAddNewRecord(newRecordRequest)
+                        await api.addNewRecord(newRecordRequest)
                         Toast.success(`Record '${recordName.value}' added successful`, "New record added");
                     }
                     catch (e) {

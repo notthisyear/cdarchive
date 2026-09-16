@@ -45,7 +45,6 @@ export async function create() {
         event.preventDefault();
         auth.logout();
         router.navigate("/")
-        // TODO: Some sort of "Are you sure" when editing/adding a record
     });
 
     nav.querySelector("button[id = addRecordButton]").addEventListener("click", async () => {

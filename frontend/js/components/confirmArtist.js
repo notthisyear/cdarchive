@@ -176,7 +176,7 @@ export function confirm(matches) {
         // Escape, clicking outside the dialog, and the header's (x) button
         // all bypass the button actions above and call modal.close()
         // directly. Without patching the close function here, we would never
-        // resolve the Promise and hence, bnever return if the user cancels
+        // resolve the Promise and hence, never return if the user cancels
         // via any other method than pressing the "Cancel" button.
         const originalClose = modalHandle.close;
         modalHandle.close = () => {

@@ -67,6 +67,8 @@ namespace CdArchiveBackend
             endpointGroups.Add(recordsEndpointGroup);
 
             var artistsEndpointGroup = new EndpointGroupBase("/artists", useAuthorization: true);
+            artistsEndpointGroup.AddEndpoint(new AddArtistEndpoint());
+            artistsEndpointGroup.AddEndpoint(new GetArtistEndpoint());
             artistsEndpointGroup.AddEndpoint(new GetArtistsEndpoint());
             endpointGroups.Add(artistsEndpointGroup);
 

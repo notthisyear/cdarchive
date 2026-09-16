@@ -1,4 +1,3 @@
-using CdArchiveBackend.Data.DTO;
 using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -11,14 +10,17 @@ using System.Security.Claims;
 
 namespace CdArchiveBackend.Endpoints
 {
+    using DtoArtist = CdArchiveBackend.Data.DTO.Artist;
+
     internal sealed class GetArtistsEndpoint : IEndpoint
     {
+
         public void AddEndpoint(RouteGroupBuilder groupBuilder)
         {
             groupBuilder.MapMethods(
                 "/",
                 [HttpMethods.Query],
-                async (List<string> artists, ClaimsPrincipal user, ArtistService artistService) =>
+                async (List<DtoArtist> artists, ClaimsPrincipal user, ArtistService artistService) =>
             {
                 if (!int.TryParse(
                     user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
@@ -29,14 +31,14 @@ namespace CdArchiveBackend.Endpoints
                     return Results.BadRequest();
                 }
 
-                Dictionary<string, List<Artist>> result = [];
+                Dictionary<string, List<DtoArtist>> result = [];
                 try
                 {
-                    var artistNames = artists.Distinct();
+                    var artistNames = artists.Select(x => x.Name).Distinct();
                     foreach (var artistName in artistNames)
                     {
                         var actualArtists = await artistService.GetArtistsByName(artistName).ConfigureAwait(false);
-                        result.Add(artistName, [.. actualArtists.Select(x => new Artist(x.Id, x.Name, x.CoverImage))]);
+                        result.Add(artistName, [.. actualArtists.Select(x => new DtoArtist(x.Id, x.Name, x.CoverImage, x.SpotifyUrl))]);
                     }
                 }
                 catch (Exception e)

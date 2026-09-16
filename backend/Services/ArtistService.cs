@@ -17,9 +17,12 @@ namespace CdArchiveBackend.Services
                 .ConfigureAwait(false);
         }
 
-        public async Task<long> AddArtist(string name, string coverImage = "")
+        public async Task<Artist?> GetArtistById(long id)
+            => await _dbContext.Artists.FirstOrDefaultAsync(x => x.Id == id).ConfigureAwait(false);
+
+        public async Task<long> AddArtist(string name, string coverImage = "", string spotifyUrl = "")
         {
-            var newArtist = new Artist() { Name = name, CoverImage = coverImage };
+            var newArtist = new Artist() { Name = name, CoverImage = coverImage, SpotifyUrl = spotifyUrl };
             _dbContext.Artists.Add(newArtist);
             _ = await _dbContext.SaveChangesAsync().ConfigureAwait(false);
             return newArtist.Id;

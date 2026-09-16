@@ -75,10 +75,21 @@ export async function getArtists(artists) {
         },
         body: JSON.stringify(artists)
     });
-    return await response.json();
+    return (await response.json()).result;
 }
 
-export async function tryAddNewRecord(record) {
+export async function addNewArtist(artist) {
+    const url = new URL("/api/artists/add", window.location.origin);
+    await fetchFromUrl(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(artist)
+    });
+}
+
+export async function addNewRecord(record) {
     const url = new URL("/api/records/add", window.location.origin);
     await fetchFromUrl(url, {
         method: "POST",
@@ -104,6 +115,7 @@ export async function searchOnSpotify(q, type, limit, offset, reponseExtractor) 
         limit: limit,
         offset: offset
     });
+
     const response = await fetch(`${SPOTIFY_API_URL}/search?${params}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${auth.getSpotifyToken()}` }

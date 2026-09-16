@@ -3,6 +3,8 @@ import * as styles from "../styles.js";
 
 export class Autocomplete {
 
+    isOpen = false;
+
     // These are private fields
     #options;
     #dropdown;
@@ -14,7 +16,7 @@ export class Autocomplete {
     // Bound listener references, kept so we can remove them later in dispose()
     #boundInputHandler = () => {
         const query = this.#options.input.value.trim();
- 
+
         if (query.length === 0) {
             this.hide();
         } else {
@@ -30,6 +32,12 @@ export class Autocomplete {
         this.#onKeyDown(e).catch(err => console.error("onKeyDown failed: ", err))
     };
     #boundDocumentClick = e => this.#onDocumentClick(e);
+
+    #boundReposition = () => {
+        if (!this.#dropdown.classList.contains("hidden")) {
+            this.#positionDropdown();
+        }
+    };
 
     constructor(options) {
         this.#options = options;
@@ -50,30 +58,31 @@ export class Autocomplete {
         options.input.addEventListener("input", this.#boundInputHandler);
         options.input.addEventListener("keydown", this.#boundKeyDown);
         document.addEventListener("click", this.#boundDocumentClick);
+
+        window.addEventListener("scroll", this.#boundReposition, true);
+        window.addEventListener("resize", this.#boundReposition);
     }
 
     #createDropdown() {
-        const parent = this.#options.input.parentElement;
-        if (!parent) {
-            throw new Error("No parent element for autocomplete dropdown");
-        }
-
-        if (!parent.classList.contains("relative")) {
-            console.warn("No relative parent element for autocomplete dropdown");
-        }
-
         this.#dropdown = document.createElement("div");
-        this.#dropdown.className = styles.autocompleteDropdown;
-
+        this.#dropdown.className = styles.autocompleteDropdown + " fixed";
+        this.#dropdown.classList.add("hidden");
         this.#dropdown.setAttribute("role", "listbox");
-        parent.appendChild(this.#dropdown);
+        document.body.appendChild(this.#dropdown);
     }
 
-    async #search() {
+    #positionDropdown() {
+        const rect = this.#options.input.getBoundingClientRect();
+        this.#dropdown.style.left = `${rect.left}px`;
+        this.#dropdown.style.top = `${rect.bottom + 4}px`;
+        this.#dropdown.style.width = `${rect.width}px`;
+    }
+
+    async #search(allowEmpty = false) {
         const id = ++this.#searchId;
         const query = this.#options.input.value.trim();
 
-        if (query.length === 0) {
+        if (query.length === 0 && !allowEmpty) {
             this.hide();
             return;
         }
@@ -201,21 +210,31 @@ export class Autocomplete {
         }
     }
 
+    async open() {
+        this.#options.input.focus();
+        await this.#search(true);
+    }
+
     show() {
+        this.#positionDropdown();
         this.#dropdown.classList.remove("hidden");
         this.#options.input.setAttribute("aria-expanded", "true");
+        this.isOpen = true;
     }
 
     hide() {
         this.#dropdown.classList.add("hidden");
         this.#options.input.setAttribute("aria-expanded", "false");
         this.#options.input.removeAttribute("aria-activedescendant");
+        this.isOpen = false;
     }
 
     dispose() {
         this.#options.input.removeEventListener("input", this.#boundInputHandler);
         this.#options.input.removeEventListener("keydown", this.#boundKeyDown);
         document.removeEventListener("click", this.#boundDocumentClick);
+        window.removeEventListener("scroll", this.#boundReposition, true);
+        window.removeEventListener("resize", this.#boundReposition);
 
         this.#dropdown.remove();
     }
