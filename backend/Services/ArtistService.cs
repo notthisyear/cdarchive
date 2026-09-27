@@ -12,7 +12,7 @@ namespace CdArchiveBackend.Services
 
         public async Task<List<Artist>> GetArtistsByName(string name)
         {
-            return await _dbContext.Artists.Where(x => EF.Functions.ILike(x.Name, EscapeLikePattern(name) + "%", @"\"))
+            return await _dbContext.Artists.Where(x => EF.Functions.ILike(x.Name, "%" + EscapeLikePattern(name) + "%", @"\"))
                 .ToListAsync()
                 .ConfigureAwait(false);
         }
