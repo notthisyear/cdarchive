@@ -1,6 +1,7 @@
 import * as auth from "./auth.js";
 
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
+const IMAGES_ENDPOINT = "images";
 
 async function fetchFromUrl(url, options = {}) {
     const token = auth.getToken();
@@ -80,13 +81,20 @@ export async function getArtists(artists) {
 
 export async function addNewArtist(artist) {
     const url = new URL("/api/artists/add", window.location.origin);
-    await fetchFromUrl(url, {
+    const response = await fetchFromUrl(url, {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
         },
         body: JSON.stringify(artist)
     });
+
+    const location = response.headers.get("Location");
+    if (!location) {
+        throw new Error("No Location header in response");
+    }
+
+    return new URL(location, window.location.origin).pathname.split("/").at(-1);
 }
 
 export async function addNewRecord(record) {
@@ -133,4 +141,8 @@ export async function getSpotifyAlbum(spotifyAlbumId) {
     });
 
     return await response.json();
+}
+
+export function getImageSrcUrl(imgId) {
+    return `/${IMAGES_ENDPOINT}/${imgId}`;
 }

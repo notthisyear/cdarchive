@@ -36,7 +36,7 @@ export function show(options) {
     overlay.style.zIndex = zIndex;
 
     const maxWidthClass = options.maxWidthClass ?? "max-w-lg";
-
+    options.showCloseIcon ??= true;
     overlay.innerHTML = `
         <div class="bg-white
                     dark:bg-slate-800
@@ -83,7 +83,7 @@ export function show(options) {
                 </h2>
 
                 <button data-modal-close
-                        class="text-slate-500 hover:text-red-500 text-2xl">
+                        class="text-slate-500 hover:text-red-500 text-2xl${options.showCloseIcon ? "" : " hidden"}">
                         ×
                 </button>
             </div>
@@ -160,7 +160,10 @@ export async function confirm(title, message) {
                     "className": styles.buttonPrimary,
                     "action": () => resolve(true)
                 }
-            ]
+            ],
+            showCloseIcon: false,
+            closeOnClickOutside: false,
+            closeOnEscape: false
         });
     });
 }
@@ -219,30 +222,35 @@ function hookEvents(modal, options) {
         }
     }
 
-    modal.overlay.addEventListener("click", e => {
-        if (e.target !== modal.overlay)
-            return;
+    if (options.closeOnClickOutside ?? true) {
+        modal.overlay.addEventListener("click", e => {
+            if (e.target !== modal.overlay)
+                return;
 
-        if (modalStack.at(-1) !== modal)
-            return;
+            if (modalStack.at(-1) !== modal)
+                return;
 
-        closeModalAndInvokeCloseActionIfAny();
-    });
-
-    modal.dialog.querySelector("[data-modal-close]").onclick = closeModalAndInvokeCloseActionIfAny;
-
-    const keyDownHandler = e => {
-        if (modalStack.at(-1) !== modal)
-            return;
-
-        if (e.key === "Escape")
             closeModalAndInvokeCloseActionIfAny();
-        else if (e.key === "Enter" && options.saveOnEnter && options.saveOnEnter === true)
-            closeModalAndInvokeSaveActionIfAny();
-    };
+        });
+    }
 
-    document.addEventListener("keydown", keyDownHandler);
-    modal.keyDownHandler = keyDownHandler;
+    if (options.showCloseIcon) {
+        modal.dialog.querySelector("[data-modal-close]").onclick = closeModalAndInvokeCloseActionIfAny;
+    }
+
+    if (options.closeOnEscape ?? true) {
+        const keyDownHandler = e => {
+            if (modalStack.at(-1) !== modal)
+                return;
+
+            if (e.key === "Escape")
+                closeModalAndInvokeCloseActionIfAny();
+            else if (e.key === "Enter" && options.saveOnEnter && options.saveOnEnter === true)
+                closeModalAndInvokeSaveActionIfAny();
+        };
+        document.addEventListener("keydown", keyDownHandler);
+        modal.keyDownHandler = keyDownHandler;
+    }
 }
 
 function close(modal) {

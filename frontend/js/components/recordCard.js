@@ -1,6 +1,7 @@
 import * as router from "../router.js";
 import * as util from "../util.js";
 import * as styles from "../styles.js"
+import * as api from "../api.js"
 
 export function create(record) {
     const card = document.createElement("div");
@@ -15,7 +16,7 @@ export function create(record) {
         </img>
     `;
 
-    card.querySelector(".cover").src = `/images/${record.summary.imageUrl}`;
+    card.querySelector(".cover").src = api.getImageSrcUrl(record.summary.imageUrl);
     card.querySelector(".cover").alt = record.summary.name;
 
     card.querySelector(".artist").textContent = util.concatenateArtists(record.summary.artists);

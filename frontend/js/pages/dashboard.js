@@ -56,8 +56,8 @@ export async function render() {
 
     grid.append(addNewRecordCard);
 
-    addNewRecordCard.addEventListener("click", () => {
-        addRecordForm.show();
+    addNewRecordCard.addEventListener("click", async () => {
+        await addRecordForm.show();
     });
     root.appendChild(grid);
 

@@ -1,12 +1,14 @@
 import * as styles from "../styles.js"
 import * as Modal from "./modal.js";
+import * as Toast from "./toast.js";
 import * as imageUploader from "../components/imageUploader.js";
 import * as auth from "../auth.js"
 import * as api from "../api.js";
+import * as confirmDuplicateArtist from "./confirmDuplicateArtist.js"
 
 import { Autocomplete } from "./autocomplete.js";
 
-export function show() {
+export function show(initialValue = "") {
     return new Promise(resolve => {
         let resolved = false;
         function resolveOnce(value) {
@@ -115,12 +117,26 @@ export function show() {
                 artistSearch.value = artist.name;
                 artistName.value = artist.name;
                 artistSpotifyUrl.value = artist.external_urls.spotify ?? "";
+
+                setConfirmButtonStatus();
             }
         });
 
         if (!auth.hasSpotifyToken()) {
             artistSearch.disabled = true;
             artistSearch.placeholder = "Log in to Spotify to search";
+        }
+
+        // Confirm button enable/disable
+        var confirmButton = null;
+        function setConfirmButtonStatus() {
+            if (confirmButton !== null) {
+                const isEnabled = artistName.value.length > 0;
+                confirmButton.disabled = !isEnabled;
+                confirmButton.classList.toggle("opacity-50", !isEnabled);
+                confirmButton.classList.toggle("cursor-not-allowed", !isEnabled);
+                confirmButton.title = isEnabled ? "Click to add record" : "A new artist must at least have a name";
+            }
         }
 
         // Actual form
@@ -132,19 +148,36 @@ export function show() {
                 {
                     "type": "save",
                     "action": async () => {
+                        if (artistName.value.length === 0) {
+                            return false;
+                        }
+
                         artistAutocomplete.dispose();
 
+                        // Check if this artist already exists
+                        const response = await api.getArtists([{ name: artistName.value, id: null }]);
+                        const results = response[artistName.value];
+                        if (results.length === 1) {
+                            const existingArtist = results[0];
+                            if (await confirmDuplicateArtist.check(existingArtist) === false) {
+                                resolveOnce(existingArtist);
+                                return true;
+                            }
+                        }
+
+                        // Create the artist
                         try {
                             const artist = {
                                 name: artistName.value,
                                 imageUrl: artistImageUploader.getImageUrl(),
                                 spotifyUrl: artistSpotifyUrl.value,
                             };
-                            await api.addNewArtist(artist);
-                            resolveOnce(artist);
+                            const artistId = await api.addNewArtist(artist);
+                            Toast.success(`Artist "${artist.name}" added`, "New artist added");
+                            resolveOnce({ "name": artist.name, "id": artistId });
                         }
                         catch (e) {
-                            console.error(`Failed to add artist - ${e}`);
+                            Toast.error(e, "Adding artist failed");
                             resolveOnce(null);
                         }
                         finally {
@@ -153,11 +186,23 @@ export function show() {
                     }
                 },
                 {
-                    "type": "cancel",
-                    "action": () => {
-                        artistAutocomplete.dispose();
-                        resolveOnce(null);
-                        return true;
+                    "type": "close",
+                    "text": "cancel",
+                    "action": async () => {
+                        const hasUnsavedChanges = artistName.value.length > 0 || artistImageUploader.getImageUrl().length > 0 || artistSpotifyUrl.value.length > 0;
+                        if (!hasUnsavedChanges) {
+                            artistAutocomplete.dispose();
+                            resolveOnce(null);
+                            return true;
+                        }
+
+                        if (await Modal.confirm("Unsaved changes", "Do you want to discard unsaved changes?")) {
+                            artistAutocomplete.dispose();
+                            resolveOnce(null);
+                            return true;
+                        }
+
+                        return false;
                     }
                 }
             ]
@@ -173,6 +218,14 @@ export function show() {
             resolveOnce(null);
             originalClose();
         };
+        confirmButton = modalHandle.dialog.querySelectorAll("#modalFooter button")[0];
+        setConfirmButtonStatus()
 
+        artistName.addEventListener("input", () => { setConfirmButtonStatus() });
+
+        artistSearch.value = initialValue;
+        if (initialValue !== "") {
+            artistSearch.dispatchEvent(new Event("input", { bubbles: true }));
+        }
     });
 }

@@ -109,7 +109,7 @@ export async function verifySpotifyToken() {
     if (spotifyToken && spotifyTokenExpiresAt && (parseInt(spotifyTokenExpiresAt) > Date.now()))
         return;
 
-    if (spotifyRefreshToken != null) {
+    if (!(spotifyRefreshToken == null)) {
         console.log("refresh token: ", spotifyRefreshToken);
         if (await refreshSpotifyToken())
             return;
@@ -147,7 +147,7 @@ function storeTokens(accessToken, refreshToken, expiresIn) {
     spotifyRefreshToken = refreshToken;
     spotifyTokenExpiresAt = Date.now() + (1000 * expiresIn);
 
-    localStorage.setItem('spotifyToken', spotifyToken);
-    localStorage.setItem('spotifyRefreshToken', spotifyRefreshToken);
-    localStorage.setItem('spotifyTokenExpiresAt', spotifyTokenExpiresAt);
+    localStorage.setItem("spotifyToken", spotifyToken);
+    localStorage.setItem("spotifyRefreshToken", spotifyRefreshToken);
+    localStorage.setItem("spotifyTokenExpiresAt", spotifyTokenExpiresAt);
 }

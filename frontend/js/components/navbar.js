@@ -48,7 +48,7 @@ export async function create() {
     });
 
     nav.querySelector("button[id = addRecordButton]").addEventListener("click", async () => {
-        addRecordForm.show();
+        await addRecordForm.show();
     });
 
     const widget = spotifyStatus.mount(nav.querySelector("div[id = spotifyStatusIndicator]"),

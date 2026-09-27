@@ -6,7 +6,6 @@ import * as api from "../api.js";
 import * as styles from "../styles.js";
 import * as util from "../util.js";
 import * as trackListing from "../components/trackListing.js";
-import * as confirmArtist from "../components/confirmArtist.js"
 import * as addArtistForm from "../components/addArtistForm.js"
 
 import { Autocomplete } from "./autocomplete.js";
@@ -28,7 +27,7 @@ function wireDurationSegment(input, { next, prev } = {}) {
     });
 }
 
-export function show() {
+export async function show() {
     const root = document.createElement("div");
     root.innerHTML = `
         <div id="addRecordDialog"
@@ -265,6 +264,22 @@ export function show() {
     const uploadCoverOverlayBtn = root.querySelector("#uploadCoverOverlayBtn");
     const formLoadingOverlay = root.querySelector("#formLoadingOverlay");
 
+    var confirmButton = null;
+
+    function setConfirmButtonStatus() {
+        const artists = getArtists(root);
+        const anyUnresolvedArtist = (artists.length === 0) || (artists.map(x => x.id).some(x => x === null));
+        const formInvalid = !albumForm.checkValidity();
+
+        if (confirmButton !== null) {
+            const isDisabled = anyUnresolvedArtist || formInvalid;
+            confirmButton.disabled = isDisabled;
+            confirmButton.classList.toggle("opacity-50", isDisabled);
+            confirmButton.classList.toggle("cursor-not-allowed", isDisabled);
+            confirmButton.title = isDisabled ? (formInvalid ? "Required field not valid" : "At least one artist is unresolved") : "Click to add record";
+        }
+    }
+
     if (!auth.hasSpotifyToken()) {
         albumSearch.disabled = true;
         albumSearch.placeholder = "Log in to Spotify to search";
@@ -313,19 +328,23 @@ export function show() {
             },
             renderItem(item) {
                 if (item.__addNew) {
-                    return `<div class="px-3 py-2 text-sm text-blue-400 hover:bg-slate-700
-                                   cursor-pointer border-slate-700">
+                    return `<div class="px-3 py-2 text-sm text-blue-400 hover:bg-slate-700 cursor-pointer border-slate-700">
                             Add new...
                         </div>`;
                 }
-                return `<div class="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer">${item.name}</li>`;
+                console.log(item);
+                return `
+                    <div class="flex items-center gap-4">
+                        <img src="${api.getImageSrcUrl(item.imageUrl)}" class="w-12 h-12 rounded" />
+                        <div class="px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 cursor-pointer">${item.name}</li>
+                    </div>`;
             },
             async onSelected(item) {
                 if (item.__addNew) {
-                    const result = await addArtistForm.show();
+                    const result = await addArtistForm.show(nameInput.value);
                     if (result !== null) {
                         nameInput.value = result.name;
-                        idInput.value = "new";
+                        idInput.value = result.id;
                     }
                 }
                 else {
@@ -334,6 +353,7 @@ export function show() {
                 }
 
                 updateArtistStatus(row);
+                setConfirmButtonStatus();
             }
         });
 
@@ -356,25 +376,28 @@ export function show() {
         row.querySelector(".status-unresolved").classList.toggle("hidden", resolved);
     }
 
-    function createArtistRow(value = "") {
+    async function createArtistRow(value = "") {
         const row = document.createElement("div");
         row.className = "artist-row group relative flex items-center gap-2";
         row.innerHTML = `
             <div class="artist-status shrink-0 w-5 h-5 flex items-center justify-center" title="">
                 
             <!-- Yellow exclamation (default / unresolved) -->
-                <svg class="status-unresolved w-5 h-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd"
-                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.743 2.987H3.482c-1.53 0-2.493-1.653-1.743-2.987l6.518-11.59zM10 13a1 1 0 100-2 1 1 0 000 2zm-.75-6.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z"
-                        clip-rule="evenodd" />
-                </svg>
-                
+                <div title="Artist is unknown, please add it from the dropdown">
+                    <svg class="status-unresolved w-5 h-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor" >
+                        <path fill-rule="evenodd"
+                            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.743 2.987H3.482c-1.53 0-2.493-1.653-1.743-2.987l6.518-11.59zM10 13a1 1 0 100-2 1 1 0 000 2zm-.75-6.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z"
+                            clip-rule="evenodd" />
+                    </svg>
+                </div>
                 <!-- Green checkmark (resolved) -->
-                <svg class="status-resolved hidden w-5 h-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd"
-                        d="M16.704 5.29a1 1 0 010 1.415l-7.004 7a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 111.414-1.414l2.793 2.792 6.296-6.293a1 1 0 011.415 0z"
-                        clip-rule="evenodd" />
-                </svg>
+                <div title="Artist known">
+                    <svg class="status-resolved hidden w-5 h-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M16.704 5.29a1 1 0 010 1.415l-7.004 7a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 111.414-1.414l2.793 2.792 6.296-6.293a1 1 0 011.415 0z"
+                            clip-rule="evenodd" />
+                    </svg>
+                </div>
             </div>
             <div class="relative flex-1">
                 <input type="text"
@@ -420,11 +443,27 @@ export function show() {
         // If the user writes in the name box, clear out the ID field
         nameInput.addEventListener("input", () => {
             idInput.value = "";
+            updateArtistStatus(row);
+            setConfirmButtonStatus();
         });
 
         const boxId = nextArtistBoxId++;
         attachArtistAutocomplete(boxId, row);
+
+        // Try to look up the artist
+        if (value !== "") {
+            try {
+                const response = await api.getArtists([{ name: value, id: null }]);
+                const results = response[value];
+                idInput.value = results.length === 1 ? results[0].id : "";
+            }
+            catch (e) {
+                console.error(e);
+            }
+        }
+
         updateArtistStatus(row);
+        setConfirmButtonStatus();
 
         row.querySelector(".remove-artist-btn").addEventListener("click", () => {
             removeArtistRow(boxId, row);
@@ -445,13 +484,13 @@ export function show() {
         });
     }
 
-    function initArtistRows() {
+    async function initArtistRows() {
         // Start with a single artist row.
-        artistRows.append(createArtistRow());
+        artistRows.append(await createArtistRow());
         updateRemoveButtonVisibility(artistRows);
 
-        addArtistBtn.addEventListener("click", () => {
-            artistRows.append(createArtistRow());
+        addArtistBtn.addEventListener("click", async () => {
+            artistRows.append(await createArtistRow());
             updateRemoveButtonVisibility(artistRows);
         });
     }
@@ -517,7 +556,7 @@ export function show() {
         clearCoverImage();
     });
 
-    initArtistRows();
+    await initArtistRows();
 
     // Album autocomplete
     autocompletes.set(nextArtistBoxId++, new Autocomplete({
@@ -529,8 +568,7 @@ export function show() {
             return `
                 <div class="flex items-center gap-4">
                     <img src="${album.images.at(-1).url}"
-                         class="w-12 h-12 roun
-                         ded">
+                         class="w-12 h-12 rounded">
                     </img>
                     <div>
                         <div class="font-medium">
@@ -557,7 +595,7 @@ export function show() {
             artistRows.innerHTML = "";
             if (albumInfo.artists) {
                 for (const artist of albumInfo.artists) {
-                    artistRows.append(createArtistRow(artist.name));
+                    artistRows.append(await createArtistRow(artist.name));
                 }
             }
 
@@ -580,6 +618,7 @@ export function show() {
             }
 
             albumSearch.value = `${util.concatenateArtists(albumInfo.artists ?? "name")} - ${recordName.value}`;
+            setConfirmButtonStatus();
         }
     }));
 
@@ -609,7 +648,7 @@ export function show() {
     let blockFormClose = false;
 
     // Actual form
-    Modal.show({
+    const modalHandle = Modal.show({
         title: "Add Record",
         content: root,
         maxWidthClass: "max-w-7/10",
@@ -625,28 +664,6 @@ export function show() {
                     blockFormClose = true;
                     showLoadingOverlay();
 
-                    // First, we fetch artist information
-                    let artistData;
-                    try {
-                        artistData = await api.getArtists(getArtists(root));
-                    }
-                    catch (e) {
-                        Toast.error(`Could not add record - ${e}`, "Adding record failed");
-                        hideLoadingOverlay();
-                        blockFormClose = false;
-                        return false;
-                    }
-
-                    const resolution = await confirmArtist.confirm(artistData);
-
-                    if (resolution === null) {
-                        hideLoadingOverlay();
-                        blockFormClose = false;
-                        return false;
-                    }
-
-                    const resolvedArtists = artistNames.map(name => resolution[name]);
-
                     const duration = [
                         durationHours.value,
                         durationMinutes.value,
@@ -656,11 +673,7 @@ export function show() {
                     const newRecordRequest = {
                         summary: {
                             name: recordName.value,
-                            artists: resolvedArtists.map(x =>
-                            ({
-                                id: x.type === "new" ? null : x.id,
-                                name: x.name
-                            })),
+                            artists: getArtists(root),
                             year: recordYear.value,
                             imageUrl: coverImage.src,
                             spotifyLink: recordSpotifyUrl.value,
@@ -680,7 +693,8 @@ export function show() {
                         hideLoadingOverlay();
                         blockFormClose = false;
                     }
-                    return false;
+
+                    return true;
                 }
             },
             {
@@ -705,4 +719,7 @@ export function show() {
             }
         ]
     });
+
+    confirmButton = modalHandle.dialog.querySelectorAll("#modalFooter button")[0];
+    setConfirmButtonStatus()
 }
