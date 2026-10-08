@@ -28,14 +28,13 @@ namespace CdArchiveBackend
             modelBuilder.Entity<UserData>(entity =>
             {
                 entity.HasKey(x => x.Id);
-
                 entity.Property(x => x.CreatedAt)
                 .HasDefaultValueSql("now()");
             });
 
             modelBuilder.Entity<Artist>(entity =>
             {
-                entity.HasKey(x => x.Id);
+                entity.HasKey(x => new { x.Id, x.UserId });
             });
 
             modelBuilder.Entity<Release>(entity =>
@@ -89,13 +88,13 @@ namespace CdArchiveBackend
             modelBuilder.Entity<ReleaseArtist>(entity =>
             {
                 entity.HasKey(x => new { x.ReleaseId, x.ArtistId });
-                // We add the extra index on artist ID to speed up queries on that property
-                entity.HasIndex(x => x.ArtistId);
+                // We add the extra index on artist ID + user ID key to speed up queries on that property
+                entity.HasIndex(x => new { x.ArtistId, x.UserId });
 
                 // The ReleaseArtist -> Artist navigation isn't setup yet, so we do that here
                 entity.HasOne(x => x.Artist)
                     .WithMany(x => x.ReleaseArtists)
-                    .HasForeignKey(x => x.ArtistId);
+                    .HasForeignKey(x => new { x.ArtistId, x.UserId });
 
             });
 

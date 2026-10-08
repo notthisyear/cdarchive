@@ -14,7 +14,7 @@ namespace CdArchiveBackend.Endpoints
 
         public void AddEndpoint(RouteGroupBuilder groupBuilder)
         {
-            groupBuilder.MapGet("/{releaseId}", async (int releaseId, ClaimsPrincipal user, RecordsService recordsService) =>
+            groupBuilder.MapGet("/{releaseId}", async (int releaseId, ClaimsPrincipal user, ReleaseService releaseService) =>
             {
                 if (!int.TryParse(
                     user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
@@ -27,7 +27,7 @@ namespace CdArchiveBackend.Endpoints
 
                 try
                 {
-                    var record = await recordsService.GetRecordData(userId, releaseId).ConfigureAwait(false);
+                    var record = await releaseService.GetReleaseData(releaseId, userId).ConfigureAwait(false);
                     return Results.Ok(new
                     {
                         record

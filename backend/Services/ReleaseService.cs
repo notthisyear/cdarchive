@@ -10,14 +10,14 @@ namespace CdArchiveBackend.Services
 {
     using DtoArtist = CdArchiveBackend.Data.DTO.Artist;
 
-    internal sealed class RecordsService(DatabaseContext dbContext)
+    internal sealed class ReleaseService(DatabaseContext dbContext)
     {
         private readonly DatabaseContext _dbContext = dbContext;
 
-        public async Task<int> GetTotalNumberOfRecordsForUser(int userId)
+        public async Task<int> GetTotalNumberOfReleasesForUser(int userId)
             => await _dbContext.UserReleases.CountAsync(x => x.UserId == userId).ConfigureAwait(false);
 
-        public async Task<List<ReleaseData>> GetRecordsForUser(int userId, int offset, int numberOfRecordsToGet)
+        public async Task<List<ReleaseData>> GetReleasesForUser(int userId, int offset, int numberOfRecordsToGet)
         {
             var releases = await _dbContext.UserReleases
                     .Where(x => x.UserId == userId)
@@ -51,7 +51,7 @@ namespace CdArchiveBackend.Services
                 ).OrderBy(x => x.Summary.Artists.First().Name)];
         }
 
-        public async Task<long> CreateRecord(Release release)
+        public async Task<long> CreateRelease(Release release)
         {
             _dbContext.Releases.Add(release);
             await _dbContext.SaveChangesAsync().ConfigureAwait(false);
@@ -75,10 +75,10 @@ namespace CdArchiveBackend.Services
             return deferUpdate ? Task.CompletedTask : _dbContext.SaveChangesAsync();
         }
 
-        public Task AddArtistsForRelease(long releaseId, List<long> artistIds, bool deferUpdate)
+        public Task AddArtistsForRelease(long releaseId, int userId, List<long> artistIds, bool deferUpdate)
         {
             foreach (var artistId in artistIds)
-                _dbContext.ReleaseArtists.Add(new() { ReleaseId = releaseId, ArtistId = artistId });
+                _dbContext.ReleaseArtists.Add(new() { ReleaseId = releaseId, ArtistId = artistId, UserId = userId });
 
             return deferUpdate ? Task.CompletedTask : _dbContext.SaveChangesAsync();
         }
@@ -89,10 +89,10 @@ namespace CdArchiveBackend.Services
             return deferUpdate ? Task.CompletedTask : _dbContext.SaveChangesAsync();
         }
 
-        public async Task<ReleaseData> GetRecordData(int userId, int releaseId)
+        public async Task<ReleaseData> GetReleaseData(long releaseId, int? userId)
         {
             var releases = await _dbContext.UserReleases
-                    .Where(x => (x.UserId == userId) && (x.ReleaseId == releaseId))
+                    .Where(x => (x.ReleaseId == releaseId) && (!userId.HasValue || (x.UserId == userId)))
                     .Include(x => x.Release)
                         .ThenInclude(x => x.ReleaseArtists)
                             .ThenInclude(x => x.Artist)
@@ -132,5 +132,13 @@ namespace CdArchiveBackend.Services
                     DurationSeconds = x.DurationSeconds
                 })]);
         }
+
+        public Task<List<long>> GetReleasesMatchingName(string recordName)
+            => _dbContext.Releases
+            .Where(x => x.Name == recordName)
+            .Select(x => x.Id).ToListAsync();
+    
+        public Task<bool> UserHasRelease(long releaseId, int userId)
+            => _dbContext.UserReleases.AnyAsync(x => x.ReleaseId == releaseId && x.UserId == userId);
     }
 }

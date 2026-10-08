@@ -6,6 +6,8 @@
 
         public long ArtistId { get; set; }
 
+        public long UserId { get; set; }
+
         public Release Release { get; set; } = null!;
 
         public Artist Artist { get; set; } = null!;

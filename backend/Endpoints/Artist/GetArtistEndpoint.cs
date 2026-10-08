@@ -29,7 +29,7 @@ namespace CdArchiveBackend.Endpoints
 
                 try
                 {
-                    var artistOrNull = await artistService.GetArtistById(artistId).ConfigureAwait(false);
+                    var artistOrNull = await artistService.GetArtistById(userId, artistId).ConfigureAwait(false);
                     return Results.Ok(new
                     {
                         success = artistOrNull != null,

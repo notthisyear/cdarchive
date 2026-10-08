@@ -12,7 +12,7 @@ namespace CdArchiveBackend.Endpoints
     {
         public void AddEndpoint(RouteGroupBuilder groupBuilder)
         {
-            groupBuilder.MapGet("/total", async (ClaimsPrincipal user, RecordsService recordsService) =>
+            groupBuilder.MapGet("/total", async (ClaimsPrincipal user, ReleaseService recordsService) =>
             {
                 if (!int.TryParse(
                     user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
@@ -27,7 +27,7 @@ namespace CdArchiveBackend.Endpoints
                 {
                     return Results.Ok(new
                     {
-                        total = await recordsService.GetTotalNumberOfRecordsForUser(userId).ConfigureAwait(false)
+                        total = await recordsService.GetTotalNumberOfReleasesForUser(userId).ConfigureAwait(false)
                     });
                 }
                 catch (Exception)

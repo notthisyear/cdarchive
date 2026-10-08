@@ -1,10 +1,34 @@
-﻿using System;
+﻿using CdArchiveBackend.Common;
+using System;
 using System.Collections.Generic;
 
 namespace CdArchiveBackend.Data.DTO
 {
+    public readonly record struct Summary(string Name, List<Artist> Artists, int Year, string? ImageUrl, string? SpotifyLink)
+    {
+        public bool IsSameSummary(Summary other)
+        {
+            if (!Name.Equals(other.Name, StringComparison.Ordinal))
+                return false;
 
-    public readonly record struct Summary(string Name, List<Artist> Artists, int Year, string? ImageUrl, string? SpotifyLink);
+            if (Year != other.Year)
+                return false;
+
+            if (!Utilities.CompareNullableStrings(SpotifyLink, other.SpotifyLink))
+                return false;
+
+            if (Artists.Count != other.Artists.Count)
+                return false;
+
+            for (var i = 0; i < Artists.Count; i++)
+            {
+                if (Artists[i].Id != other.Artists[i].Id)
+                    return false;
+            }
+
+            return true;
+        }
+    }
 
     public readonly record struct Track(string Title, int DiscNumber, int TrackNumber, int DurationSeconds);
 
@@ -24,6 +48,9 @@ namespace CdArchiveBackend.Data.DTO
             foreach (var artist in Summary.Artists)
             {
                 if (string.IsNullOrEmpty(artist.Name))
+                    return false;
+
+                if (artist.Id == null)
                     return false;
             }
 
@@ -76,6 +103,26 @@ namespace CdArchiveBackend.Data.DTO
                 Console.WriteLine($"\t\tDurationSeconds: {track.DurationSeconds}\n");
             }
 
+        }
+
+        public bool IsSameRelease(ReleaseData other)
+        {
+            if (DurationSeconds != other.DurationSeconds)
+                return false;
+
+            if (!Summary.IsSameSummary(other.Summary))
+                return false;
+
+            if (Tracks.Count != other.Tracks.Count)
+                return false;
+
+            for (var i = 0; i < Tracks.Count; i++)
+            {
+                if (Tracks[i] != other.Tracks[i])
+                    return false;
+            }
+
+            return true;
         }
     }
 }

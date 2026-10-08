@@ -37,7 +37,7 @@ namespace CdArchiveBackend.Endpoints
                     var artistNames = artists.Select(x => x.Name).Distinct();
                     foreach (var artistName in artistNames)
                     {
-                        var actualArtists = await artistService.GetArtistsByName(artistName).ConfigureAwait(false);
+                        var actualArtists = await artistService.GetArtistsByName(userId, artistName).ConfigureAwait(false);
                         result.Add(artistName, [.. actualArtists.Select(x => new DtoArtist(x.Id, x.Name, x.CoverImage, x.SpotifyUrl))]);
                     }
                 }

@@ -10,19 +10,19 @@ namespace CdArchiveBackend.Services
     {
         private readonly DatabaseContext _dbContext = dbContext;
 
-        public async Task<List<Artist>> GetArtistsByName(string name)
+        public async Task<List<Artist>> GetArtistsByName(long userId, string name)
         {
-            return await _dbContext.Artists.Where(x => EF.Functions.ILike(x.Name, "%" + EscapeLikePattern(name) + "%", @"\"))
+            return await _dbContext.Artists.Where(x => x.UserId == userId && EF.Functions.ILike(x.Name, "%" + EscapeLikePattern(name) + "%", @"\"))
                 .ToListAsync()
                 .ConfigureAwait(false);
         }
 
-        public async Task<Artist?> GetArtistById(long id)
-            => await _dbContext.Artists.FirstOrDefaultAsync(x => x.Id == id).ConfigureAwait(false);
+        public async Task<Artist?> GetArtistById(long userId, long id)
+            => await _dbContext.Artists.FirstOrDefaultAsync(x => x.UserId == userId && x.Id == id).ConfigureAwait(false);
 
-        public async Task<long> AddArtist(string name, string coverImage = "", string spotifyUrl = "")
+        public async Task<long> AddArtist(long userId, string name, string coverImage = "", string spotifyUrl = "")
         {
-            var newArtist = new Artist() { Name = name, CoverImage = coverImage, SpotifyUrl = spotifyUrl };
+            var newArtist = new Artist() { UserId = userId, Name = name, CoverImage = coverImage, SpotifyUrl = spotifyUrl };
             _dbContext.Artists.Add(newArtist);
             _ = await _dbContext.SaveChangesAsync().ConfigureAwait(false);
             return newArtist.Id;

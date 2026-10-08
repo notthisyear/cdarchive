@@ -31,12 +31,14 @@ namespace CdArchiveBackend.Endpoints
                     if (result == null)
                         return Results.BadRequest("Failed to fetch image");
 
-                    imageName = await result.Task.ConfigureAwait(false);
-                    if (string.IsNullOrEmpty(imageName))
+                    var r = await result.Task.ConfigureAwait(false);
+                    if (r.DownloadFailed)
                         return Results.BadRequest("Failed to fetch image");
+
+                    imageName = r.ImageName;
                 }
 
-                var artistId = await artistService.AddArtist(artist.Name, imageName, artist.SpotifyUrl ?? string.Empty).ConfigureAwait(false);
+                var artistId = await artistService.AddArtist(userId, artist.Name, imageName, artist.SpotifyUrl ?? string.Empty).ConfigureAwait(false);
                 return Results.CreatedAtRoute(GetArtistEndpoint.EndpointName, new { artistId });
             });
         }

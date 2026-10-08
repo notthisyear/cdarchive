@@ -4,6 +4,7 @@ using CdArchiveBackend.Endpoints;
 using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +16,7 @@ namespace CdArchiveBackend
     public class Program
     {
         private const string ImageStoreConfigurationKey = "ImageStore";
+        private const int MaxImageSizeBytes = 1 << 23; // 8 MiB
 
         public static void Main(string[] args)
         {
@@ -37,7 +39,7 @@ namespace CdArchiveBackend
 
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<UserService>();
-            builder.Services.AddScoped<RecordsService>();
+            builder.Services.AddScoped<ReleaseService>();
             builder.Services.AddScoped<ArtistService>();
             builder.Services.AddSingleton(
                 new ImageDownloadService(
@@ -46,7 +48,11 @@ namespace CdArchiveBackend
                     configuration[ImageStoreConfigurationKey] ?? string.Empty)
                 );
             // builder.Services.AddSingleton(new RequestStore<ArtistRequestEntry>(60_000));
-
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                // Note: Base64 encoded images are ~33% larger than the actual image
+                options.Limits.MaxRequestBodySize = (long)(1.33 * MaxImageSizeBytes);
+            });
             var app = builder.Build();
 
             app.UseAuthentication();

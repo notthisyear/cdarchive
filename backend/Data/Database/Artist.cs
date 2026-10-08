@@ -6,6 +6,8 @@ namespace CdArchiveBackend.Data.Database
     {
         public long Id { get; set; }
 
+        public long UserId { get; set; }
+
         public required string Name { get; set; }
 
         public string? CoverImage { get; set; }
