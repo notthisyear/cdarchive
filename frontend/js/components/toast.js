@@ -2,6 +2,7 @@ import * as styles from "../styles.js";
 
 const CONTAINER_ID = "toastContainer";
 const DEFAULT_DURATION = 4000;
+const PENDING_TOAST_KEY = "pendingToast";
 
 const variants = {
     success: {
@@ -124,3 +125,21 @@ export function error(message, title = "Something went wrong") {
 export function info(message, title) {
     return show({ type: "info", title, message });
 }
+
+export function showAfterReload(options) {
+    sessionStorage.setItem(PENDING_TOAST_KEY, JSON.stringify(options));
+}
+
+(function showPendingToastIfAny() {
+    const toastAsJson = sessionStorage.getItem(PENDING_TOAST_KEY);
+    if (!toastAsJson)
+        return;
+
+    sessionStorage.removeItem(PENDING_TOAST_KEY);
+
+    try {
+        show(JSON.parse(toastAsJson));
+    } catch (err) {
+        console.error("Failed to show pending toast:", err);
+    }
+})();

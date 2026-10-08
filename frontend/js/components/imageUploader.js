@@ -108,6 +108,8 @@ export function create(options = {}) {
 
         currentFile = file;
 
+        console.log(`image upload file: ${file}`);
+
         const reader = new FileReader();
         reader.onload = () => setImage(reader.result);
         reader.readAsDataURL(file);

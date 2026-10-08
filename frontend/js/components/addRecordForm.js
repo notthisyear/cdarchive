@@ -683,17 +683,19 @@ export async function show() {
                     };
 
                     try {
+                        // TODO: Maybe it'd be nice to catch if we added something already had with another message
                         await api.addNewRecord(newRecordRequest)
-                        Toast.success(`Record '${recordName.value}' added successful`, "New record added");
+                        Toast.showAfterReload({ type: "success", title: "New record saved", message: `Record '${recordName.value}' added successfully` });
                     }
                     catch (e) {
-                        Toast.error(`Could not add record - ${e}`, "Adding record failed");
+                        Toast.showAfterReload({ type: "error", title: "Adding record failed", message: `Could not add record - ${e}` });
                     }
                     finally {
                         hideLoadingOverlay();
                         blockFormClose = false;
                     }
 
+                    location.reload();
                     return true;
                 }
             },
