@@ -125,6 +125,15 @@ export function show(options) {
     };
 
     const footer = dialog.querySelector("#modalFooter");
+
+    // Optional element (e.g. a status line) taking up the footer's free space left of the buttons
+    if (options.footerContent) {
+        const slot = document.createElement("div");
+        slot.className = "flex-1 min-w-0 self-center";
+        slot.append(options.footerContent);
+        footer.append(slot);
+    }
+
     for (const button of options.buttons ?? []) {
         addButton(modal, button, footer);
     }

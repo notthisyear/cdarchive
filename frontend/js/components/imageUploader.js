@@ -1,9 +1,12 @@
+import { spinnerSvg } from "./common/spinner.js";
+
 /**
  * Creates a self-contained image upload widget.
  *
  * @param {Object} [options]
  * @param {string} [options.placeholderText="No image selected"]
  * @param {string} [options.alt="Image"]
+ * @param {string} [options.widthClass="w-40"] - width of the (square) widget, e.g. "w-40 lg:w-1/3"
  * @param {(file: File) => void} [options.onFileSelected] - called when a new file is chosen
  * @param {() => void} [options.onRemove] - called when the remove button is pressed
  * @returns {{
@@ -12,26 +15,33 @@
  *   clear: () => void,
  *   getImageUrl: () => string | null
  *   getFile: () => File | null
+ *   setLoading: (loading: boolean) => void   - shows a spinner over the image
  * }}
  */
 export function create(options = {}) {
     const {
         placeholderText = "No image selected",
         alt = "Image",
+        widthClass = "w-40",
         onFileSelected,
         onRemove,
     } = options;
 
     const root = document.createElement("div");
-    root.className = "shrink-0";
+    root.className = `shrink-0 ${widthClass}`;
     root.innerHTML = `
-        <div class="image-uploader-container relative group w-40 aspect-square rounded-lg border
+        <div class="image-uploader-container relative group w-full aspect-square rounded-lg border
                     border-slate-200 dark:border-slate-700 overflow-hidden
                     bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
             <img class="image-uploader-preview w-full h-full object-cover hidden" alt="${alt}">
 
             <div class="image-uploader-placeholder text-sm text-slate-400 text-center px-4">
                 ${placeholderText}
+            </div>
+
+            <div class="image-uploader-spinner hidden absolute inset-0 flex items-center justify-center
+                        bg-slate-50/80 dark:bg-slate-900/80 text-slate-400 pointer-events-none">
+                ${spinnerSvg("h-8 w-8")}
             </div>
 
             <div class="absolute inset-0 flex items-center justify-center
@@ -78,6 +88,7 @@ export function create(options = {}) {
     const removeBtn = root.querySelector(".image-uploader-remove-btn");
     const uploadOverlayBtn = root.querySelector(".image-uploader-upload-btn");
     const fileInput = root.querySelector(".image-uploader-file-input");
+    const spinner = root.querySelector(".image-uploader-spinner");
 
     let currentFile = null;
 
@@ -128,5 +139,6 @@ export function create(options = {}) {
         clear,
         getImageUrl: () => previewImg.src,
         getFile: () => currentFile,
+        setLoading: loading => spinner.classList.toggle("hidden", !loading),
     };
 }

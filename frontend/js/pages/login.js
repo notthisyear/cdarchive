@@ -1,4 +1,4 @@
-import * as api from "../api.js";
+import * as backendApi from "../api/backend.js";
 import * as auth from "../auth.js";
 import * as router from "../router.js";
 
@@ -176,7 +176,7 @@ export async function render() {
         const password = root.querySelector("input[id = password]").value;
 
         try {
-            const token = await api.login(username, password);
+            const token = await backendApi.login(username, password);
             auth.login(username, token);
             router.navigate("/");
         }

@@ -142,6 +142,27 @@ export class Autocomplete {
             row.addEventListener("click", async () => await this.#select(index));
             this.#dropdown.appendChild(row);
         });
+
+        this.#limitVisibleItems();
+    }
+
+    // With options.maxVisibleItems set, the dropdown is cut off after that many rows and scrolls
+    // to show the rest. Measured from the rendered rows, since their height depends on renderItem.
+    #limitVisibleItems() {
+        const max = this.#options.maxVisibleItems;
+        const rows = this.#dropdown.children;
+
+        if (!(max > 0) || rows.length <= max) {
+            this.#dropdown.style.maxHeight = "";
+            this.#dropdown.style.overflowY = "";
+            return;
+        }
+
+        const lastVisible = rows[max - 1];
+        const borders = this.#dropdown.offsetHeight - this.#dropdown.clientHeight;
+        this.#dropdown.style.maxHeight = `${lastVisible.offsetTop + lastVisible.offsetHeight + borders}px`;
+        this.#dropdown.style.overflowY = "auto";
+        this.#dropdown.scrollTop = 0;
     }
 
     #selecting = false;

@@ -1,10 +1,10 @@
-import * as api from "../api.js";
+import * as backendApi from "../api/backend.js";
 import * as util from "../util.js"
 import * as styles from "../styles.js";
 import * as trackListing from "../components/trackListing.js"
 
 export async function render(params) {
-    const record = await api.getRecord(params.id);
+    const record = await backendApi.getRelease(params.id);
 
     const root = document.createElement("div");
 
@@ -15,8 +15,7 @@ export async function render(params) {
             
             <!-- Left side -->
             <div class="space-y-6">
-                <img src="/images/${record.summary.imageUrl}"
-                     alt="${record.summary.name}"
+                <img id="recordCover"
                      class="
                         w-full
                         rounded-xl
@@ -106,6 +105,18 @@ export async function render(params) {
             </div>
         </div>
     `;
+
+    // Without a cover, an empty square instead of a broken image
+    const cover = root.querySelector("#recordCover");
+    const coverSrc = backendApi.toImageSrc(record.summary.imageUrl);
+    if (coverSrc) {
+        cover.src = coverSrc;
+        cover.alt = record.summary.name;
+    }
+    else {
+        cover.alt = "";
+        cover.classList.add("aspect-square", "bg-slate-200", "dark:bg-slate-700");
+    }
 
     const editRecordSummary = root.querySelector("#editRecordSummary");
     editRecordSummary.addEventListener("click", () => {

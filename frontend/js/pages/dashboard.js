@@ -1,5 +1,5 @@
-import * as addRecordForm from "../components/addRecordForm.js";
-import * as api from "../api.js";
+import * as addReleaseDialog from "../components/addReleaseDialog.js";
+import * as backendApi from "../api/backend.js";
 import * as auth from "../auth.js";
 import * as recordCard from "../components/recordCard.js";
 import * as styles from "../styles.js";
@@ -7,8 +7,8 @@ import * as styles from "../styles.js";
 const PAGE_SIZE = 8;
 export async function render() {
 
-    const records = await api.getRecordsSummary(0, PAGE_SIZE);
-    const totalNumberOfRecords = await api.getTotalNumberOfRecords();
+    const releases = await backendApi.getReleasesSummary(0, PAGE_SIZE);
+    const totalNumberOfReleases = await backendApi.getTotalNumberOfReleases();
 
     const root = document.createElement("div");
 
@@ -26,7 +26,7 @@ export async function render() {
             </h2>
 
             <p class="text-slate-400 mt-1">
-                ${totalNumberOfRecords} records
+                ${totalNumberOfReleases} records
             </p>
         </div>
     `;
@@ -36,8 +36,8 @@ export async function render() {
     const grid = document.createElement("div");
     grid.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6";
 
-    records.forEach(record => {
-        grid.append(recordCard.create(record));
+    releases.forEach(r => {
+        grid.append(recordCard.create(r));
     });
 
     const addNewRecordCard = document.createElement("div");
@@ -57,14 +57,14 @@ export async function render() {
     grid.append(addNewRecordCard);
 
     addNewRecordCard.addEventListener("click", async () => {
-        await addRecordForm.show();
+        await addReleaseDialog.show();
     });
     root.appendChild(grid);
 
 
-    let offset = records.length;
+    let offset = releases.length;
     let loading = false;
-    let hasMoreRecords = records.length === PAGE_SIZE;
+    let hasMoreReleases = releases.length === PAGE_SIZE;
 
     const sentinel = document.createElement("div");
     sentinel.className = "col-span-full flex justify-center py-8 min-h-[4rem]";
@@ -88,7 +88,7 @@ export async function render() {
         const entry = entries[0];
 
         console.log("before if check")
-        if (!entry.isIntersecting || loading || !hasMoreRecords)
+        if (!entry.isIntersecting || loading || !hasMoreReleases)
             return;
         console.log("after if check")
 
@@ -96,21 +96,21 @@ export async function render() {
         sentinel.style.visibility = "visible";
 
         try {
-            const nextRecords = await api.getRecordsSummary(offset, PAGE_SIZE);
+            const nextReleases = await backendApi.getReleasesSummary(offset, PAGE_SIZE);
 
-            nextRecords.forEach(record => {
-                grid.insertBefore(recordCard.create(record), addNewRecordCard);
+            nextReleases.forEach(r => {
+                grid.insertBefore(recordCard.create(r), addNewRecordCard);
             });
 
-            offset += nextRecords.length;
+            offset += nextReleases.length;
 
-            if (nextRecords.length < PAGE_SIZE) {
-                hasMoreRecords = false;
+            if (nextReleases.length < PAGE_SIZE) {
+                hasMoreReleases = false;
                 observer.disconnect();
             }
         } catch (err) {
-            console.error("Failed to load more records", err);
-            hasMoreRecords = false;
+            console.error("Failed to load more releases", err);
+            hasMoreReleases = false;
             observer.disconnect();
         } finally {
             loading = false;
@@ -123,7 +123,7 @@ export async function render() {
             threshold: 0
         });
 
-    if (hasMoreRecords) {
+    if (hasMoreReleases) {
         observer.observe(sentinel);
     }
 
