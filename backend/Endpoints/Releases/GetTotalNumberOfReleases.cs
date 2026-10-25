@@ -1,33 +1,27 @@
-﻿using CdArchiveBackend.Services;
+﻿using CdArchiveBackend.Common;
+using CdArchiveBackend.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using System;
-using System.Globalization;
 using System.Security.Claims;
 
 namespace CdArchiveBackend.Endpoints
 {
-    internal sealed class GetRecordsEndpoint : IEndpoint
+    internal sealed class GetTotalNumberOfReleases : IEndpoint
     {
         public void AddEndpoint(RouteGroupBuilder groupBuilder)
         {
-            groupBuilder.MapGet("/", async (int offset, int limit, ClaimsPrincipal user, ReleaseService recordsService) =>
+            groupBuilder.MapGet("/total", async (ClaimsPrincipal user, ReleaseService recordsService) =>
             {
-                if (!int.TryParse(
-                    user.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var userId))
-                {
+                if (!user.TryExtractUserId(out var userId))
                     return Results.BadRequest();
-                }
 
                 try
                 {
                     return Results.Ok(new
                     {
-                        records = await recordsService.GetReleasesForUser(userId, offset, limit).ConfigureAwait(false)
+                        total = await recordsService.GetTotalNumberOfReleasesForUser(userId).ConfigureAwait(false)
                     });
                 }
                 catch (Exception)

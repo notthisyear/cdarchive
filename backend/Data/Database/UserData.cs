@@ -2,7 +2,7 @@
 
 namespace CdArchiveBackend.Data.Database
 {
-    public sealed class UserData
+    internal sealed class UserData
     {
         public long Id { get; set; }
 
@@ -12,6 +12,6 @@ namespace CdArchiveBackend.Data.Database
 
         public required string PasswordHash { get; set; }
 
-        public DateTime CreatedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
     }
 }

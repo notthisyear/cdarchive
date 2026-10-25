@@ -1,18 +1,27 @@
 using CdArchiveBackend.Common;
-using CdArchiveBackend.Common.HttpWrappers;
 using CdArchiveBackend.Endpoints;
+using CdArchiveBackend.Endpoints.Artwork;
+using CdArchiveBackend.Endpoints.Uploads;
 using CdArchiveBackend.Services;
+using CdArchiveBackend.Services.External;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using System;
 using System.Collections.Generic;
-using System.Net.Http;
+using System.Text.Json.Serialization;
 
 namespace CdArchiveBackend
 {
+    using CoverArtArchiveOptions = CdArchiveBackend.Data.External.CoverArtArchive.Options;
+    using MusicBrainzOptions = CdArchiveBackend.Data.External.MusicBrainz.Options;
+    using UploadOptions = CdArchiveBackend.Data.Uploads.Options;
+    using WikimediaOptions = CdArchiveBackend.Data.External.Wikimedia.Options;
+
     public class Program
     {
         private const string ImageStoreConfigurationKey = "ImageStore";
@@ -30,23 +39,84 @@ namespace CdArchiveBackend
                 {
                     opt.TokenValidationParameters = JwtService.GetTokenValidationParameters(configuration);
                 });
-            builder.Services.AddAuthorization();
+            builder.Services.AddAuthorization(); 
 
             builder.Services.AddDbContext<DatabaseContext>(
                 opt => opt.UseNpgsql(
                     builder.Configuration.GetConnectionString("UserContext"))
                     .UseSnakeCaseNamingConvention());
 
+            builder.Services.ConfigureHttpJsonOptions(o =>
+                o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
             builder.Services.AddScoped<JwtService>();
             builder.Services.AddScoped<UserService>();
             builder.Services.AddScoped<ReleaseService>();
-            builder.Services.AddScoped<ArtistService>();
-            builder.Services.AddSingleton(
-                new ImageDownloadService(
-                    new FileSystem(),
-                    () => new HttpClientWrapper(new HttpClient()),
-                    configuration[ImageStoreConfigurationKey] ?? string.Empty)
-                );
+            //builder.Services.AddScoped<ArtistService>();
+            //builder.Services.AddSingleton(
+            //    new ImageDownloadService(
+            //        new FileSystem(),
+            //        () => new HttpClientWrapper(new HttpClient()),
+            //        configuration[ImageStoreConfigurationKey] ?? string.Empty)
+            //    );
+
+
+            builder.Services.AddMemoryCache();
+            builder.Services.AddSingleton<MusicBrainzRateLimiter>();
+            builder.Services.AddSingleton<CoverArtArchiveRateLimiter>();
+            builder.Services.AddSingleton<WikimediaRateLimiter>();
+
+            builder.Services.AddOptions<MusicBrainzOptions>()
+                .Bind(builder.Configuration.GetSection(MusicBrainzOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+
+            builder.Services.AddOptions<CoverArtArchiveOptions>()
+                .Bind(builder.Configuration.GetSection(CoverArtArchiveOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+
+            builder.Services.AddOptions<WikimediaOptions>()
+               .Bind(builder.Configuration.GetSection(WikimediaOptions.SectionName))
+               .ValidateDataAnnotations()
+               .ValidateOnStart();
+
+            // The signing key lives in user secrets ("Uploads:SigningKey")
+            builder.Services.AddOptions<UploadOptions>()
+               .Bind(builder.Configuration.GetSection(UploadOptions.SectionName))
+               .ValidateDataAnnotations()
+               .Validate(o => o.HasValidSigningKey(), $"{UploadOptions.SectionName}:SigningKey must be base64 of at least 32 bytes")
+               .ValidateOnStart();
+
+            builder.Services.AddSingleton(TimeProvider.System);
+            builder.Services.AddSingleton<MediaUrlService>();
+
+            builder.Services.AddHttpClient<MusicBrainzService>((sp, c) =>
+            {
+                var options = sp.GetRequiredService<IOptions<MusicBrainzOptions>>().Value;
+                c.BaseAddress = new Uri(options.ApiUrl);
+                c.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
+                c.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                c.Timeout = TimeSpan.FromSeconds(10);
+            });
+
+            builder.Services.AddHttpClient<CoverArtService>((sp, c) =>
+            {
+                var options = sp.GetRequiredService<IOptions<CoverArtArchiveOptions>>().Value;
+                c.BaseAddress = new Uri(options.ApiUrl);
+                c.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
+                c.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                c.Timeout = TimeSpan.FromSeconds(10);
+            });
+
+            builder.Services.AddHttpClient<WikimediaService>((sp, c) =>
+            {
+                var options = sp.GetRequiredService<IOptions<WikimediaOptions>>().Value;
+                c.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
+                c.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                c.Timeout = TimeSpan.FromSeconds(10);
+            });
+
             // builder.Services.AddSingleton(new RequestStore<ArtistRequestEntry>(60_000));
             builder.WebHost.ConfigureKestrel(options =>
             {
@@ -65,18 +135,35 @@ namespace CdArchiveBackend
             authEndpointGroup.AddEndpoint(new LoginEndpoint());
             endpointGroups.Add(authEndpointGroup);
 
-            var recordsEndpointGroup = new EndpointGroupBase("/records", useAuthorization: true);
-            recordsEndpointGroup.AddEndpoint(new GetRecordsEndpoint());
-            recordsEndpointGroup.AddEndpoint(new GetRecordEndpoint());
-            recordsEndpointGroup.AddEndpoint(new AddRecordEndpoint());
-            recordsEndpointGroup.AddEndpoint(new GetTotalNumberOfRecords());
-            endpointGroups.Add(recordsEndpointGroup);
+            var releasesEndpointGroup = new EndpointGroupBase("/releases", useAuthorization: true);
+            releasesEndpointGroup.AddEndpoint(new GetReleasesEndpoint());
+            //releasesEndpointGroup.AddEndpoint(new GetRecordEndpoint());
+            //releasesEndpointGroup.AddEndpoint(new AddRecordEndpoint());
+            releasesEndpointGroup.AddEndpoint(new GetTotalNumberOfReleases());
+            endpointGroups.Add(releasesEndpointGroup);
+
+            var musicbrainzEndpointGroup = new EndpointGroupBase("/musicbrainz", useAuthorization: true);
+            musicbrainzEndpointGroup.AddEndpoint(new GetRecordsFromMusicBrainzEndpoint());
+            musicbrainzEndpointGroup.AddEndpoint(new GetTracklistFromMusicBrainzEndpoint());
+            musicbrainzEndpointGroup.AddEndpoint(new GetArtistsFromMusicBrainzEndpoint());
+            musicbrainzEndpointGroup.AddEndpoint(new GetArtistFromMusicBrainzEndpoint());
+            endpointGroups.Add(musicbrainzEndpointGroup);
+
+            var artworkEndpointGroup = new EndpointGroupBase("/artwork", useAuthorization: true);
+            artworkEndpointGroup.AddEndpoint(new GetAlbumArtworkEndpoint());
+            artworkEndpointGroup.AddEndpoint(new GetArtistArtworkEndpoint());
+            endpointGroups.Add(artworkEndpointGroup);
 
             var artistsEndpointGroup = new EndpointGroupBase("/artists", useAuthorization: true);
-            artistsEndpointGroup.AddEndpoint(new AddArtistEndpoint());
-            artistsEndpointGroup.AddEndpoint(new GetArtistEndpoint());
-            artistsEndpointGroup.AddEndpoint(new GetArtistsEndpoint());
+            //artistsEndpointGroup.AddEndpoint(new AddArtistEndpoint());
+            //artistsEndpointGroup.AddEndpoint(new GetArtistEndpoint());
+            //artistsEndpointGroup.AddEndpoint(new GetArtistsEndpoint());
             endpointGroups.Add(artistsEndpointGroup);
+
+            // No authorization: browsers don't send the token for an <img src>, so the links are signed instead
+            var uploadsEndpointGroup = new EndpointGroupBase("/uploads");
+            uploadsEndpointGroup.AddEndpoint(new GetUploadEndpoint());
+            endpointGroups.Add(uploadsEndpointGroup);
 
             foreach (var endpointGroup in endpointGroups)
                 endpointGroup.AddEndpoints(app);

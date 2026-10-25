@@ -27,7 +27,7 @@ namespace CdArchiveBackend.Services
             _accessTokenExpiryMinutes = int.Parse(_jwtSection[JwtSectionExpiryTimeMinutesName] ?? string.Empty, NumberStyles.Integer);
         }
 
-        public string CreateToken(UserData userData)
+        internal string CreateToken(UserData userData)
         {
             var claims = new[]
             {

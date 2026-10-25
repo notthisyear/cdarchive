@@ -4,14 +4,17 @@ using System.Collections.Generic;
 
 namespace CdArchiveBackend.Data.DTO
 {
-    public readonly record struct Summary(string Name, List<Artist> Artists, int Year, string? ImageUrl, string? SpotifyLink)
+    public readonly record struct Summary(string Title, List<Artist> Artists, string Kind, int Year, string? DefaultImage, string? SpotifyLink)
     {
         public bool IsSameSummary(Summary other)
         {
-            if (!Name.Equals(other.Name, StringComparison.Ordinal))
+            if (!Title.Equals(other.Title, StringComparison.Ordinal))
                 return false;
 
             if (Year != other.Year)
+                return false;
+
+            if (!Kind.Equals(other.Kind, StringComparison.Ordinal))
                 return false;
 
             if (!Utilities.CompareNullableStrings(SpotifyLink, other.SpotifyLink))
@@ -36,7 +39,10 @@ namespace CdArchiveBackend.Data.DTO
     {
         public bool Validate()
         {
-            if (string.IsNullOrEmpty(Summary.Name))
+            if (string.IsNullOrEmpty(Summary.Title))
+                return false;
+
+            if (string.IsNullOrEmpty(Summary.Kind))
                 return false;
 
             if (DurationSeconds < 0)
@@ -79,9 +85,10 @@ namespace CdArchiveBackend.Data.DTO
         {
             Console.WriteLine($"Id: {Id}");
             Console.WriteLine("Summary:");
-            Console.WriteLine($"\tName: {Summary.Name}");
+            Console.WriteLine($"\tTitle: {Summary.Title}");
+            Console.WriteLine($"\tKind: {Summary.Kind}");
             Console.WriteLine($"\tYear: {Summary.Year}");
-            Console.WriteLine($"\tImageUrl: {Summary.ImageUrl}");
+            Console.WriteLine($"\tDefaultImage: {Summary.DefaultImage}");
             Console.WriteLine($"\tSpotifyLink: {Summary.SpotifyLink}");
 
             Console.WriteLine("\tArtists:");

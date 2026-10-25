@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CdArchiveBackend.Interfaces
@@ -8,5 +9,7 @@ namespace CdArchiveBackend.Interfaces
         public HttpContentHeaders Headers { get; }
 
         public Task<byte[]> ReadAsByteArrayAsync();
+
+        public Task<T?> ReadFromJsonAsync<T>(CancellationToken cancellationToken = default);
     }
 }
