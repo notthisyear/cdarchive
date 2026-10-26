@@ -33,8 +33,7 @@ namespace CdArchiveBackend.Services
             var today = new DateTimeOffset(time.GetUtcNow().UtcDateTime.Date, TimeSpan.Zero);
             var expires = today.AddDays(2).ToUnixTimeSeconds();
 
-            return string.Create(CultureInfo.InvariantCulture,
-                $"{UploadsPath}{file.Id}?exp={expires}&sig={Sign(file.Id, expires)}");
+            return string.Create(CultureInfo.InvariantCulture, $"{UploadsPath}{file.Id}?exp={expires}&sig={Sign(file.Id, expires)}");
         }
 
         public bool IsValidUploadLink(long mediaFileId, long expires, string signature)
@@ -48,7 +47,8 @@ namespace CdArchiveBackend.Services
                 Encoding.ASCII.GetBytes(signature));
         }
 
-        public long GetSecondsUntil(long expires) => expires - time.GetUtcNow().ToUnixTimeSeconds();
+        public long GetSecondsUntil(long expires)
+            => expires - time.GetUtcNow().ToUnixTimeSeconds();
 
         private string Sign(long mediaFileId, long expires)
         {

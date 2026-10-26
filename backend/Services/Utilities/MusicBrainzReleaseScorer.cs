@@ -1,25 +1,28 @@
-﻿using CdArchiveBackend.Data.External.MusicBrainz;
+﻿using CdArchiveBackend.Common;
+using CdArchiveBackend.Data.External.MusicBrainz;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace CdArchiveBackend.Services.Utilities
 {
     internal static partial class MusicBrainzReleaseScorer
     {
+        // Spelling and punctuation variants of the same title score 0.84 and up. A different album
+        // with one more word ("Greatest Hits Live") scores ~0.6-0.72, and short titles one letter
+        // apart ("Love"/"Live") 0.75. See TitleSimilarityTests.
+        internal const double TitleSimilarityLowerThreshold = 0.8;
         private const int TrackCountMatchPoints = 100;
         private const int TrackCountMissPenaltyPerTrack = 5;
-        private const int ExactDatePoints = 50;
         private const int ArtistMatchPoints = 20;
         private const int NoArtistMatchPenalty = 50;
         private const int TypeMatchPoints = 10;
         private const int TypeMismatchPenalty = 10;
         private const int TitleMatchPoints = 100;
-        private const double TitleSimilarityLowerThreshold = 0.7;
         private const double ArtistSimilarityLowerThreshold = 0.8;
+        // Release groups this much less similar to the title than the best one aren't worth fetching
+        private const double ReleaseGroupTitleSimilarityMargin = 0.05;
         private enum DatePrecision
         {
             Year = 1,
@@ -47,6 +50,39 @@ namespace CdArchiveBackend.Services.Utilities
                 .Select(x => x.release)];
         }
 
+        // The release groups that may be the album we're looking for, best first. A release group is
+        // left out if its title isn't similar enough, it first came out after the release we're
+        // looking for (that can't be a later release of it), or its type doesn't match. Only the ones
+        // (nearly) as similar to the title as the best one are kept, so we don't fetch the releases
+        // of "Destroyer Demos" when looking for "Destroyer".
+        public static List<ReleaseGroupDto> PickReleaseGroups(this IEnumerable<ReleaseGroupDto> groups,
+                                                              string expectedTitle,
+                                                              DateOnly releaseDate,
+                                                              string type,
+                                                              int maxNumberOfGroups)
+        {
+            var expected = TitleSimilarity.Prepare(expectedTitle);
+            var matching = groups
+                .Select(x => (similarity: TitleSimilarity.Score(expected, TitleSimilarity.Prepare(x.Title ?? "")), group: x))
+                .Where(x => x.similarity >= TitleSimilarityLowerThreshold)
+                .Where(x => TypeScore(type, x.group.PrimaryType) >= 0)
+                // Only the year: the dates of the same release often differ by a few days between sources.
+                // No date at all says nothing, so keep those.
+                .Where(x => !TryParsePartialDate(x.group.FirstReleaseDate, out var year, out _, out _) || year <= releaseDate.Year)
+                .OrderByDescending(x => x.similarity)
+                .ThenByDescending(x => x.group.Score)
+                .ToList();
+
+            if (matching.Count == 0)
+                return [];
+
+            var best = matching[0].similarity;
+            return [.. matching
+                .Where(x => x.similarity >= best - ReleaseGroupTitleSimilarityMargin)
+                .Take(maxNumberOfGroups)
+                .Select(x => x.group)];
+        }
+
         private static int Score(ReleaseCandidateDto c,
                                  TitleSimilarity.Prepared expectedTitle,
                                  int trackCount,
@@ -66,7 +102,7 @@ namespace CdArchiveBackend.Services.Utilities
                 {
                     matches += wantedArtists
                         .Select(x => NameSimilarity.Score(x, TrimAndRemoveLeadingThe(artistCredit.Name)))
-                        .Any(x => x > ArtistSimilarityLowerThreshold) ? 1 : 0;
+                        .Any(x => x >= ArtistSimilarityLowerThreshold) ? 1 : 0;
                 }
                 s += matches > 0 ? matches * ArtistMatchPoints : -NoArtistMatchPenalty;
             }

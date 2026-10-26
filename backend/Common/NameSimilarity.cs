@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 
-namespace CdArchiveBackend.Services.Utilities
+namespace CdArchiveBackend.Common
 {
     public static class NameSimilarity
     {
@@ -15,8 +15,20 @@ namespace CdArchiveBackend.Services.Utilities
         /// <summary>Returns 1.0 for identical names, 0.0 for completely different ones.</summary>
         public static double Score(string expected, string candidate)
         {
+            // Note: Normalize will remove all punctuation, so a name that's all punctuation
+            //       would match the empty string as well as any other all-punctuation name.
+            //       Checking that one side isn't empty (or just whitespace) when the other
+            //       is catches the first case.
+            if (string.IsNullOrWhiteSpace(expected) != string.IsNullOrWhiteSpace(candidate))
+                return 0;
+
             var a = Normalize(expected);
             var b = Normalize(candidate);
+
+            // Names without a single letter or digit ("!!!", "???") normalize to nothing; compare
+            // them as written instead. Catches the second case.
+            if (a.Length == 0 && b.Length == 0)
+                return StringSimilarity(expected.Trim(), candidate.Trim());
 
             var direct = StringSimilarity(a, b);
             if (direct == 1.0)
@@ -29,7 +41,7 @@ namespace CdArchiveBackend.Services.Utilities
         }
 
         /// <summary>
-        /// Calculates the Levensthtein distance (also known as optimal string alignment).
+        /// Calculates the optimal string alignment (Levenshtein distance + transposition)
         /// Insertions, deletions, substitutions and adjacent transpositions all have a
         /// cost of 1.
         /// </summary>

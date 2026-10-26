@@ -41,7 +41,13 @@ namespace CdArchiveBackend.Endpoints.Artwork
                 try
                 {
                     var channelProgress = new ChannelProgress(channel.Writer);
-                    var entityId = await musicBrainzService.GetWikidataEntityIdAsync(mbid, channelProgress, ct).ConfigureAwait(false);
+                    var (getResult, entityId) = await musicBrainzService.GetWikidataEntityIdAsync(mbid, channelProgress, ct).ConfigureAwait(false);
+
+                    if (getResult == Utilities.HttpGetResult.RateLimitedOrServiceUnavailable)
+                    {
+                        channel.Writer.TryWrite(new SseItem<object>(new { message = "MusicBrainz is unavailable" }, "error"));
+                        return;
+                    }
 
                     if (string.IsNullOrEmpty(entityId))
                     {
@@ -51,15 +57,15 @@ namespace CdArchiveBackend.Endpoints.Artwork
 
                     var result = await wikimediaService.GetImageAsync(entityId, channelProgress, ct).ConfigureAwait(false);
                     if (result.GetResult == Utilities.HttpGetResult.RateLimitedOrServiceUnavailable)
-                        channel.Writer.TryWrite(new SseItem<object>(new { message = "CovertArtArchive unavailable" }, "error"));
+                        channel.Writer.TryWrite(new SseItem<object>(new { message = "Wikimedia unavailable" }, "error"));
                     else if (result.ArtworkData != null)
                         channel.Writer.TryWrite(new SseItem<object>(result.ArtworkData, "result"));
                     else
-                        channel.Writer.TryWrite(new SseItem<object>(new { message = "Fetching covert art failed" }, "error"));
+                        channel.Writer.TryWrite(new SseItem<object>(new { message = "Fetching artist image failed" }, "error"));
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    channel.Writer.TryWrite(new SseItem<object>(new { message = "MusicBrainz is unavailable" }, "error"));
+                    channel.Writer.TryWrite(new SseItem<object>(new { message = "External service unavailable" }, "error"));
                 }
                 finally
                 {

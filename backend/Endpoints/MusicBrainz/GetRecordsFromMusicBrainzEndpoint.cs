@@ -68,7 +68,7 @@ namespace CdArchiveBackend.Endpoints
                         releaseType,
                         channelProgress: new ChannelProgress(channel.Writer), ct: ct).ConfigureAwait(false);
 
-                    if (result.GetResult == Utilities.HttpGetResult.RateLimitedOrServiceUnavailable)
+                    if (result.GetResult == HttpGetResult.RateLimitedOrServiceUnavailable)
                         channel.Writer.TryWrite(new SseItem<object>(new { message = "MusicBrainz is unavailable" }, "error"));
                     else
                         channel.Writer.TryWrite(new SseItem<object>(result.Candidates, "result"));

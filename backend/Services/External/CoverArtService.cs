@@ -1,7 +1,6 @@
 ﻿using CdArchiveBackend.Common;
 using CdArchiveBackend.Data.External;
 using CdArchiveBackend.Data.External.CoverArtArchive;
-using CdArchiveBackend.Endpoints.Artwork;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System;
@@ -30,7 +29,7 @@ namespace CdArchiveBackend.Services.External
         private readonly int _maxNumberOfAttempts = options.Value.MaxNumberOfAttempts;
 
         public async Task<ArtworkResult> GetFrontCoverAsync(string mbid,
-                                                            ChannelProgress channelProgress,
+                                                            ChannelProgress? channelProgress,
                                                             CancellationToken ct)
         {
             if (string.IsNullOrEmpty(mbid))

@@ -7,17 +7,17 @@ namespace CdArchiveBackend
     {
         public DbSet<Creator> Creators => Set<Creator>();
 
+        public DbSet<CreatorImage> CreatorImages => Set<CreatorImage>();
+
         public DbSet<Release> Releases => Set<Release>();
 
         public DbSet<ReleaseCreator> ReleaseCreators => Set<ReleaseCreator>();
 
+        public DbSet<ReleaseImage> ReleaseImages => Set<ReleaseImage>();
+
         public DbSet<Track> Tracks => Set<Track>();
 
         public DbSet<UserData> Users => Set<UserData>();
-
-        public DbSet<CollectionItem> CollectionItems => Set<CollectionItem>();
-
-        public DbSet<UserCreatorProfile> UserCreatorProfiles => Set<UserCreatorProfile>();
 
         public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
 
@@ -83,14 +83,37 @@ namespace CdArchiveBackend
                 entity.Property(x => x.SortName).HasMaxLength(300);
                 entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.Country).HasMaxLength(2);
+                entity.Property(x => x.Notes).HasMaxLength(4000);
                 entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
-                entity.HasIndex(x => x.Name);
+                // "This user's creators", searched and sorted by name
+                entity.HasIndex(x => new { x.UserId, x.SortName });
 
-                // Deleting the image just leaves the creator without one
-                entity.HasOne(x => x.DefaultImage).WithMany()
-                    .HasForeignKey(x => x.DefaultImageId)
+                entity.HasOne<UserData>().WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);        // delete user => delete their data
+
+                // Deleting the file just goes back to showing the first image
+                entity.HasOne(x => x.PreferredImage).WithMany()
+                    .HasForeignKey(x => x.PreferredImageId)
                     .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<CreatorImage>(entity =>
+            {
+                entity.HasKey(x => new { x.CreatorId, x.MediaFileId });
+
+                entity.HasOne(x => x.Creator).WithMany(c => c.Images)
+                    .HasForeignKey(x => x.CreatorId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Deleting the file just removes it from the creators that used it
+                entity.HasOne(x => x.MediaFile).WithMany()
+                    .HasForeignKey(x => x.MediaFileId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // "Is this file still used?", for cleaning up files nothing refers to
+                entity.HasIndex(x => x.MediaFileId);
             });
 
             modelBuilder.Entity<CreatorExternalId>(entity =>
@@ -104,8 +127,9 @@ namespace CdArchiveBackend
                     .HasForeignKey(x => x.CreatorId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // "Which creator has this MusicBrainz id?", and no two creators with the same one
-                entity.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+                // "Which creators have this MusicBrainz id?" Not unique: creators belong to one user
+                // each, so several users' copies of the same artist share its id.
+                entity.HasIndex(x => new { x.Source, x.ExternalId });
             });
 
             modelBuilder.Entity<Release>(entity=>
@@ -113,32 +137,54 @@ namespace CdArchiveBackend
                 entity.Property(x => x.Title).HasMaxLength(500).IsRequired();
                 entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
+                entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.Barcode).HasMaxLength(32);
+                entity.Property(x => x.Fingerprint).HasMaxLength(64).IsRequired();
+                entity.Property(x => x.Notes).HasMaxLength(4000);
                 entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
                 entity.HasIndex(x => x.Title);
 
-                // The entity has a previous release id the refers to a specific other release, 1 : 1 relation
-                entity.HasOne(x => x.PreviousRelease)
-                .WithMany()
-                .HasForeignKey(x => x.PreviousReleaseId)
-                .OnDelete(DeleteBehavior.SetNull);
+                // "Does the user already have this release?" Not unique: two different MusicBrainz
+                // releases may well have the same fingerprint.
+                entity.HasIndex(x => new { x.UserId, x.Fingerprint });
 
-                // The entity has a next release id the refers to a specific other release, 1 : 1 relation
-                entity.HasOne(x => x.NextRelease)
-                .WithMany()
-                .HasForeignKey(x => x.NextReleaseId)
-                .OnDelete(DeleteBehavior.SetNull);
-        
-                // Same barcode = same release instance (reuse it instead of duplicating)
+                // "This user's collection", optionally only what they own
+                entity.HasIndex(x => new { x.UserId, x.Status });
+
+                entity.HasOne<UserData>().WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);        // delete user => delete their data
+
+                // Releases belong to one user each, so several releases may share a barcode
                 entity.HasIndex(x => x.Barcode)
-                .IsUnique()
                 .HasFilter("\"barcode\" IS NOT NULL");
 
-                // Deleting the image just leaves the release without one
-                entity.HasOne(x => x.DefaultImage).WithMany()
-                    .HasForeignKey(x => x.DefaultImageId)
+                // Deleting the file just goes back to showing the first image
+                entity.HasOne(x => x.PreferredImage).WithMany()
+                    .HasForeignKey(x => x.PreferredImageId)
                     .OnDelete(DeleteBehavior.SetNull);
+
+                entity.ToTable(t => t.HasCheckConstraint(
+                    "ck_releases_score",
+                    $"\"score\" BETWEEN {Release.MinScore} AND {Release.MaxScore}"));
+            });
+
+            modelBuilder.Entity<ReleaseImage>(entity =>
+            {
+                entity.HasKey(x => new { x.ReleaseId, x.MediaFileId });
+
+                entity.HasOne(x => x.Release).WithMany(r => r.Images)
+                    .HasForeignKey(x => x.ReleaseId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Deleting the file just removes it from the releases that used it
+                entity.HasOne(x => x.MediaFile).WithMany()
+                    .HasForeignKey(x => x.MediaFileId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // "Is this file still used?", for cleaning up files nothing refers to
+                entity.HasIndex(x => x.MediaFileId);
             });
 
             modelBuilder.Entity<ReleaseExternalId>(entity =>
@@ -152,18 +198,10 @@ namespace CdArchiveBackend
                     .HasForeignKey(x => x.ReleaseId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // "Which releases have this id?", e.g. all releases in a MusicBrainz release group
-                // Both indexes are on the same columns, so they're named explicitly (the naming
-                // convention would otherwise give one of them a "1" suffix)
-                entity.HasIndex(x => new { x.Source, x.ExternalId })
-                    .HasDatabaseName("ix_release_external_ids_source_external_id");
-
-                // A release's own id belongs to that release only. A release group is shared by
-                // its releases (the CD, the LP...), so it's left out.
-                entity.HasIndex(x => new { x.Source, x.ExternalId }, "unique_release_id")
-                    .HasDatabaseName("ix_release_external_ids_source_external_id_unique")
-                    .IsUnique()
-                    .HasFilter($"\"source\" <> '{nameof(ExternalSource.MusicBrainzReleaseGroup)}'");
+                // "Which releases have this id?", e.g. all releases in a MusicBrainz release group.
+                // Not unique: releases belong to one user each, so several users' copies of the
+                // same release share its id.
+                entity.HasIndex(x => new { x.Source, x.ExternalId });
             });
 
             modelBuilder.Entity<ReleaseCreator>(entity =>
@@ -172,6 +210,7 @@ namespace CdArchiveBackend
                 entity.HasKey(x => new { x.ReleaseId, x.CreatorId, x.Role });
                 entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.CharacterName).HasMaxLength(200);
+                entity.Property(x => x.JoinPhrase).HasMaxLength(50).HasDefaultValue("");
 
                 entity.HasOne(x => x.Release).WithMany(r => r.Credits)
                     .HasForeignKey(x => x.ReleaseId)
@@ -192,48 +231,6 @@ namespace CdArchiveBackend
                 entity.HasOne(x => x.Release).WithMany(r => r.Tracks)
                     .HasForeignKey(x => x.ReleaseId)
                     .OnDelete(DeleteBehavior.Cascade);
-            });
-
-
-            modelBuilder.Entity<CollectionItem>(entity =>
-            {
-                entity.Property(x => x.Notes).HasMaxLength(4000);
-                entity.Property(x => x.AddedAt).HasDefaultValueSql("now()");
-
-                entity.HasIndex(x => new { x.UserId, x.ReleaseId }).IsUnique();
-
-                entity.HasOne<UserData>().WithMany()
-                    .HasForeignKey(x => x.UserId)
-                    .OnDelete(DeleteBehavior.Cascade);        // delete user => delete their data
-
-                // Don't allow deleting a release somebody still owns
-                entity.HasOne(x => x.Release).WithMany()
-                    .HasForeignKey(x => x.ReleaseId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(x => x.CustomImage).WithMany()
-                    .HasForeignKey(x => x.CustomImageId)
-                    .OnDelete(DeleteBehavior.SetNull);
-            });
-
-            modelBuilder.Entity<UserCreatorProfile>(entity =>
-            {
-                entity.Property(x => x.DisplayNameOverride).HasMaxLength(300);
-                entity.Property(x => x.Notes).HasMaxLength(4000);
-
-                entity.HasIndex(x => new { x.UserId, x.CreatorId }).IsUnique();
-
-                entity.HasOne<UserData>().WithMany()
-                    .HasForeignKey(x => x.UserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasOne(x => x.Creator).WithMany()
-                    .HasForeignKey(x => x.CreatorId)
-                    .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasOne(x => x.CustomImage).WithMany()
-                    .HasForeignKey(x => x.CustomImageId)
-                    .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }

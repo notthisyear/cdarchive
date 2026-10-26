@@ -20,14 +20,18 @@ namespace CdArchiveBackend.Data.External.MusicBrainz
     #endregion
 
     #region Release data
-    public sealed record ReleaseMediumDto([property: JsonPropertyName("format")] string? Format);
+    public sealed record ReleaseMediumDto([property: JsonPropertyName("format")] string? Format,
+                                          [property: JsonPropertyName("track-count")] int? TrackCount);
 
+    // first-release-date is only there when browsing releases with inc=release-groups, not when searching them
     public sealed record ReleaseGroupRefDto([property: JsonPropertyName("id")] string Id,
-                                            [property: JsonPropertyName("primary-type")] string? PrimaryType);
+                                            [property: JsonPropertyName("primary-type")] string? PrimaryType,
+                                            [property: JsonPropertyName("first-release-date")] string? FirstReleaseDate);
 
     public sealed record ReleaseCandidateDto([property: JsonPropertyName("id")] string Id,
                                              [property: JsonPropertyName("title")] string Title,
                                              [property: JsonPropertyName("date")] string? Date,
+                                             [property: JsonPropertyName("barcode")] string? Barcode,
                                              [property: JsonPropertyName("track-count")] int? TrackCount,
                                              [property: JsonPropertyName("country")] string? Country,
                                              [property: JsonPropertyName("disambiguation")] string? Disambiguation,
@@ -37,6 +41,22 @@ namespace CdArchiveBackend.Data.External.MusicBrainz
 
     public sealed record ReleaseCandidateSearchDto([property: JsonPropertyName("count")] int Count,
                                                    [property: JsonPropertyName("releases")] List<ReleaseCandidateDto>? Releases);
+
+    // The releases of one release group, from browsing release?release-group=<mbid>. Unlike search
+    // results, these have no track-count of their own, only one per medium.
+    public sealed record ReleaseBrowseDto([property: JsonPropertyName("release-count")] int Count,
+                                          [property: JsonPropertyName("releases")] List<ReleaseCandidateDto>? Releases);
+    #endregion
+
+    #region Release group data
+    public sealed record ReleaseGroupDto([property: JsonPropertyName("id")] string Id,
+                                         [property: JsonPropertyName("score")] int Score,
+                                         [property: JsonPropertyName("title")] string? Title,
+                                         [property: JsonPropertyName("primary-type")] string? PrimaryType,
+                                         [property: JsonPropertyName("first-release-date")] string? FirstReleaseDate);
+
+    public sealed record ReleaseGroupSearchDto([property: JsonPropertyName("count")] int Count,
+                                               [property: JsonPropertyName("release-groups")] List<ReleaseGroupDto>? ReleaseGroups);
     #endregion
 
     #region Track data

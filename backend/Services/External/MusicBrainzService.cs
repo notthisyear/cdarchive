@@ -10,7 +10,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using static CdArchiveBackend.Common.Utilities;
 
@@ -47,6 +46,18 @@ namespace CdArchiveBackend.Services.External
         // Note: For some searches, MusicBrainz can returns tens of thousands of results. Let's cap it after two full pages.
         private const int MaxReleaseCandidates = ReleaseCandidatePageLimit * 2;
 
+        // Search results are ordered by score, so the album we look for is near the top if it's there at all
+        private const int ReleaseGroupPageLimit = 100;
+        private const int MaxReleaseGroups = ReleaseGroupPageLimit;
+
+        // Usually just one, but a title may match several groups equally well (e.g. an album and a
+        // live album with the same name). Each costs at least one request, so keep it small.
+        private const int MaxReleaseGroupsToFetch = 3;
+
+        // 100 is the most MusicBrainz returns at once. Popular albums have hundreds of releases.
+        private const int ReleasesInGroupPageLimit = 100;
+        private const int MaxReleasesInGroup = ReleasesInGroupPageLimit * 3;
+
         private const int ArtistCandidateLimit = 10;
 
         private const int MinimumNumberOfReleasePoints = 75;
@@ -55,8 +66,16 @@ namespace CdArchiveBackend.Services.External
         public readonly record struct ReleaseCandidateResult(HttpGetResult GetResult, IReadOnlyList<MusicBrainzReleaseCandidate> Candidates);
         public readonly record struct TrackListResult(HttpGetResult GetResult, IReadOnlyList<MusicBrainzTrack> Tracks);
         public readonly record struct ArtistCandidateResult(HttpGetResult GetResult, IReadOnlyList<MusicBrainzArtist> Artists);
+        public readonly record struct WikidataEntityIdResult(HttpGetResult GetResult, string? EntityId);
 
         #region Public methods
+
+        // The MusicBrainz releases that may be the album we look for, best first:
+        //  1. Search for release groups (albums) with this title and artists, and pick the ones whose
+        //     title, first release date and type fit
+        //  2. Get all official releases in those groups and rank them by track count, date etc.
+        // If no release group fits, we search for the releases directly instead, which finds more
+        // but also a lot more noise.
         public async Task<ReleaseCandidateResult> SearchReleaseCandidatesAsync(string title,
                                                                                string[] artistNames,
                                                                                DateOnly releaseDate,
@@ -74,51 +93,75 @@ namespace CdArchiveBackend.Services.External
                 .ToList();
 
             var who = artistClauses.Count > 0 ? " AND " + string.Join(" AND ", artistClauses) : "";
-            var luceneSearchString = Normalize($"release:\"{EscapePhrase(title.Trim())}\"{who}");
+            var escapedTitle = EscapePhrase(CollapseWhitespace(title));
 
-            HttpGetResult getResult = HttpGetResult.NotSet;
-            var cacheKey = $"mb:release-candidates:{luceneSearchString.ToLowerInvariant()}";
-            var result = await _cache.GetOrCreateAsync<IReadOnlyList<MusicBrainzReleaseCandidate>>(cacheKey, async entry =>
+            // 1. Release groups
+            var (groups, getResult) = await GetAllPagesAsync<ReleaseGroupSearchDto, ReleaseGroupDto>(
+                $"release-group/?query={Uri.EscapeDataString($"releasegroup:\"{escapedTitle}\"{who}")}&fmt=json",
+                ReleaseGroupPageLimit,
+                MaxReleaseGroups,
+                body => (body.ReleaseGroups, body.Count),
+                "Getting matching albums",
+                channelProgress,
+                ct).ConfigureAwait(false);
+
+            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+                return new(getResult, []);
+
+            // 2. Their releases
+            List<ReleaseCandidateDto> releases = [];
+            foreach (var group in groups.PickReleaseGroups(title, releaseDate, releaseType, MaxReleaseGroupsToFetch))
             {
-                entry.AbsoluteExpirationRelativeToNow = CacheTtl;
-                List<ReleaseCandidateDto> bodies = [];
-                var currentOffset = 0;
-                while (true)
-                {
-                    ReleaseCandidateSearchDto? body;
-                    entry.AbsoluteExpirationRelativeToNow = CacheTtl;
-                    (body, getResult) = await _httpClient.TryGet<ReleaseCandidateSearchDto>(
-                        $"release/?query={Uri.EscapeDataString(luceneSearchString)}&offset={currentOffset}&limit={ReleaseCandidatePageLimit}&fmt=json&status:official",
-                        _limiter,
-                        _maxNumberOfAttempts,
-                        ct,
-                        "Getting matching artists",
-                        channelProgress).ConfigureAwait(false);
+                List<ReleaseCandidateDto> groupReleases;
+                (groupReleases, getResult) = await GetAllPagesAsync<ReleaseBrowseDto, ReleaseCandidateDto>(
+                    $"release?release-group={Uri.EscapeDataString(group.Id)}&status=official&inc=media+artist-credits+release-groups&fmt=json",
+                    ReleasesInGroupPageLimit,
+                    MaxReleasesInGroup,
+                    body => (body.Releases, body.Count),
+                    "Getting the album's releases",
+                    channelProgress,
+                    ct).ConfigureAwait(false);
 
-                    if (body?.Releases == null)
-                        return [];
+                if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+                    return new(getResult, []);
 
-                    bodies.AddRange(body.Releases);
+                releases.AddRange(groupReleases);
+            }
 
-                    if (((currentOffset + body.Releases.Count) < body.Count) && (bodies.Count < MaxReleaseCandidates))
-                        currentOffset = ReleaseCandidatePageLimit;
-                    else
-                        break;
-                }
+            List<ReleaseCandidateDto> ranked;
+            if (releases.Count > 0)
+            {
+                // Browsed releases only have a track count per medium
+                // They're all releases of the right album, so rank them without leaving any out
+                ranked = releases
+                    .Select(r => r with { TrackCount = r.TrackCount ?? r.Media?.Sum(m => m.TrackCount ?? 0) })
+                    .RankAndFilterReleases(title, numberOfTracks, releaseDate, artistNames, releaseType);
+            }
+            else
+            {
+                // Fallback: search the releases themselves
+                (releases, getResult) = await GetAllPagesAsync<ReleaseCandidateSearchDto, ReleaseCandidateDto>(
+                    $"release/?query={Uri.EscapeDataString($"release:\"{escapedTitle}\"{who} AND status:official")}&fmt=json",
+                    ReleaseCandidatePageLimit,
+                    MaxReleaseCandidates,
+                    body => (body.Releases, body.Count),
+                    "Getting matching releases",
+                    channelProgress,
+                    ct).ConfigureAwait(false);
 
-                var releases = bodies.Where(x => x.ReleaseGroup?.Id is not null)
+                if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+                    return new(getResult, []);
+
+                ranked = releases
+                    .Where(x => x.ReleaseGroup?.Id is not null)
                     .RankAndFilterReleases(title, numberOfTracks, releaseDate, artistNames, releaseType, MinimumNumberOfReleasePoints);
+            }
 
-                static string GetArtistName(List<CreditDto>? credits)
-                {
-                    if (credits == null)
-                        return string.Empty;
+            // Each name followed by its own join phrase: "A, B & C" is A + ", " + B + " & " + C + ""
+            static string GetArtistName(List<CreditDto>? credits)
+                => credits == null ? string.Empty : string.Concat(credits.Select(x => x.Name + (x.JoinPhrase ?? string.Empty)));
 
-                    var joinPhrase = credits.FirstOrDefault(x => !string.IsNullOrEmpty(x.JoinPhrase))?.JoinPhrase ?? "&";
-                    return string.Join(joinPhrase, credits.Select(x => x.Name));
-                }
-                        
-                return [.. releases
+            return new(HttpGetResult.Success, [.. ranked
                 .Select(r => new MusicBrainzReleaseCandidate(
                     r.Id,
                     r.ReleaseGroup?.Id ?? string.Empty,
@@ -126,21 +169,17 @@ namespace CdArchiveBackend.Services.External
                     GetArtistName(r.ArtistCredit),
                     r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.Name)] : [],
                     r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.ArtistDto?.Id ?? string.Empty)] : [],
+                    r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.JoinPhrase ?? string.Empty)] : [],
+                    // Only known for releases found through their release group
+                    r.ReleaseGroup?.FirstReleaseDate,
                     r.Date,
                     r.ReleaseGroup?.PrimaryType,
                     // Note: I haven't seen more than one media format, so let's just take the first one
-                    r.Media?.First().Format ?? string.Empty,
+                    r.Media?.FirstOrDefault()?.Format ?? string.Empty,
                     r.Country,
+                    r.Barcode,
                     r.Disambiguation,
-                    r.TrackCount ?? 0){
-                })];
-            }).ConfigureAwait(false);
-
-            // If we failed due to the the MusicBrainz server being unhelpful, let's not cache it.
-            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
-                _cache.Remove(cacheKey);
-
-            return new(getResult, result ?? []);
+                    r.TrackCount ?? 0))]);
         }
 
         public async Task<TrackListResult> GetTracklistAsync(string releaseMbid, ChannelProgress channelProgress, CancellationToken ct)
@@ -214,14 +253,17 @@ namespace CdArchiveBackend.Services.External
             return new(getResult, result ?? []);
         }
 
-        public async Task<string?> GetWikidataEntityIdAsync(string artistMbid, ChannelProgress channelProgress, CancellationToken ct)
+        // EntityId is null both when the artist has no Wikidata entity and when MusicBrainz was
+        // unavailable; GetResult tells them apart
+        public async Task<WikidataEntityIdResult> GetWikidataEntityIdAsync(string artistMbid, ChannelProgress? channelProgress, CancellationToken ct)
         {
             var cacheKey = $"mb:wikidata:{artistMbid}";
             HttpGetResult getResult = HttpGetResult.NotSet;
             var result = await _cache.GetOrCreateAsync(cacheKey, async entry =>
             {
                 entry.AbsoluteExpirationRelativeToNow = CacheTtl;
-                var (body, _) = await _httpClient.TryGet<RelationsDto>(
+                RelationsDto? body;
+                (body, getResult) = await _httpClient.TryGet<RelationsDto>(
                     $"artist/{artistMbid}?inc=url-rels&fmt=json",
                     _limiter,
                     _maxNumberOfAttempts,
@@ -241,10 +283,10 @@ namespace CdArchiveBackend.Services.External
             if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
                 _cache.Remove(cacheKey);
 
-            return result;
+            return new(getResult, result);
         }
 
-        public async Task<ArtistCandidateResult> GetArtistAsync(string artistMbid, ChannelProgress channelProgress, CancellationToken ct)
+        public async Task<ArtistCandidateResult> GetArtistAsync(string artistMbid, ChannelProgress? channelProgress, CancellationToken ct)
         {
             var cacheKey = $"mb:artist:{artistMbid}";
             HttpGetResult getResult = HttpGetResult.NotSet;
@@ -280,6 +322,59 @@ namespace CdArchiveBackend.Services.External
         }
         #endregion
 
+        // Gets every page of a search or browse (up to maxItems), cached as a whole. url is
+        // everything but the offset and limit. unpack gives the items on a page and the total count.
+        private async Task<(List<TItem> Items, HttpGetResult Result)> GetAllPagesAsync<TBody, TItem>(string url,
+                                                                                                     int pageLimit,
+                                                                                                     int maxItems,
+                                                                                                     Func<TBody, (List<TItem>? Items, int Count)> unpack,
+                                                                                                     string step,
+                                                                                                     ChannelProgress channelProgress,
+                                                                                                     CancellationToken ct) where TBody : class
+        {
+            HttpGetResult getResult = HttpGetResult.NotSet;
+            var cacheKey = $"mb:pages:{url}";
+            var result = await _cache.GetOrCreateAsync<List<TItem>>(cacheKey, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = CacheTtl;
+                List<TItem> items = [];
+                while (true)
+                {
+                    TBody? body;
+                    (body, getResult) = await _httpClient.TryGet<TBody>(
+                        $"{url}&offset={items.Count}&limit={pageLimit}",
+                        _limiter,
+                        _maxNumberOfAttempts,
+                        ct,
+                        step,
+                        channelProgress).ConfigureAwait(false);
+
+                    if (body == null)
+                        break;
+
+                    var (page, count) = unpack(body);
+                    if (page == null || page.Count == 0)
+                        break;
+
+                    items.AddRange(page);
+                    if (items.Count >= count || items.Count >= maxItems)
+                        break;
+                }
+
+                return items;
+            }).ConfigureAwait(false);
+
+            // If we failed due to the the MusicBrainz server being unhelpful, let's not cache it,
+            // nor use what we got before it failed
+            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+            {
+                _cache.Remove(cacheKey);
+                return ([], getResult);
+            }
+
+            return (result ?? [], getResult);
+        }
+
         // See https://musicbrainz.org/doc/Artist
         private static CreatorType MapType(string musicBrainzType)
             => musicBrainzType switch
@@ -293,7 +388,11 @@ namespace CdArchiveBackend.Services.External
             => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
         private static string Normalize(string s) =>
-            NormalizeStringRegex().Replace(s.Trim(), " ").ToLowerInvariant();
+            CollapseWhitespace(s).ToLowerInvariant();
+
+        // Not lowercased, unlike Normalize: Lucene only takes AND in capitals as an operator
+        private static string CollapseWhitespace(string s) =>
+            NormalizeStringRegex().Replace(s.Trim(), " ");
 
         // See https://www.wikidata.org/wiki/Wikidata:Identifiers
         [GeneratedRegex(@"/(Q\d+)$")]

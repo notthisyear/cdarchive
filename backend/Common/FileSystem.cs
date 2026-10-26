@@ -9,5 +9,11 @@ namespace CdArchiveBackend.Common
     {
         public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken cancellationToken = default)
             => File.WriteAllBytesAsync(path, bytes, cancellationToken);
+
+        public void CreateDirectory(string path)
+            => Directory.CreateDirectory(path);
+
+        public void DeleteFile(string path)
+            => File.Delete(path);
     }
 }

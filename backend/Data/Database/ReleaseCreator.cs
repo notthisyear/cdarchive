@@ -30,7 +30,13 @@
         /// <summary>
         /// Where to order this ReleaseCreator if all creators for this release are written in a list. Meant to preserve billing order.
         /// </summary>
-        public int? SortOrder { get; set; } 
+        public int? SortOrder { get; set; }
+
+        /// <summary>
+        /// Text written after this creator's name when the credits are joined into one line, e.g. " &amp; " or " feat. ".
+        /// Comes from MusicBrainz's artist credit. Empty for the last creator.
+        /// </summary>
+        public string JoinPhrase { get; set; } = "";
 
         public Release Release { get; set; } = null!;
 

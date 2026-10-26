@@ -1,7 +1,6 @@
 ﻿using CdArchiveBackend.Common;
 using CdArchiveBackend.Data.External;
 using CdArchiveBackend.Data.External.Wikimedia;
-using CdArchiveBackend.Endpoints.Artwork;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System;
@@ -41,7 +40,7 @@ namespace CdArchiveBackend.Services.External
         private readonly IMemoryCache _cache = cache;
         #endregion
 
-        public async Task<ArtworkResult> GetImageAsync(string wikidataEntityId, ChannelProgress channelProgress, CancellationToken ct)
+        public async Task<ArtworkResult> GetImageAsync(string wikidataEntityId, ChannelProgress? channelProgress, CancellationToken ct)
         {
             if (!ValidateWikidataEntityIdRegex().IsMatch(wikidataEntityId))
                 return new (HttpGetResult.NotSet, null);
@@ -63,7 +62,7 @@ namespace CdArchiveBackend.Services.External
             return new(getResult, image);
         }
 
-        private async Task<(HttpGetResult getResult, ArtworkData? data)> FetchAsync(string wikidataEntityId, ChannelProgress channelProgress, CancellationToken ct)
+        private async Task<(HttpGetResult getResult, ArtworkData? data)> FetchAsync(string wikidataEntityId, ChannelProgress? channelProgress, CancellationToken ct)
         {
             var (getResult, imageName) = await GetImageFileNameAsync(wikidataEntityId, channelProgress, ct);
             if (string.IsNullOrEmpty(imageName))
@@ -116,7 +115,7 @@ namespace CdArchiveBackend.Services.External
                 AttributionRequired: CompareNullableStrings(imageInfo.ExtMetadata?.AttributionRequired?.Value, "true")));
         }
 
-        private async Task<(HttpGetResult getResult, string imageName)> GetImageFileNameAsync(string wikidataEntityId, ChannelProgress channelProgress, CancellationToken ct)
+        private async Task<(HttpGetResult getResult, string imageName)> GetImageFileNameAsync(string wikidataEntityId, ChannelProgress? channelProgress, CancellationToken ct)
         {
             var result = await _httpClient.TryGet<WbGetClaimsDto>(
                 $"{_wikimediaApiUrl}api.php?action=wbgetclaims&entity={wikidataEntityId}&property=P18&format=json",
