@@ -155,6 +155,7 @@ namespace CdArchiveBackend
 
             var musicbrainzEndpointGroup = new EndpointGroupBase("/musicbrainz", useAuthorization: true);
             musicbrainzEndpointGroup.AddEndpoint(new GetRecordsFromMusicBrainzEndpoint());
+            musicbrainzEndpointGroup.AddEndpoint(new LookUpRecordsOnMusicBrainzEndpoint());
             musicbrainzEndpointGroup.AddEndpoint(new GetTracklistFromMusicBrainzEndpoint());
             musicbrainzEndpointGroup.AddEndpoint(new GetArtistsFromMusicBrainzEndpoint());
             musicbrainzEndpointGroup.AddEndpoint(new GetArtistFromMusicBrainzEndpoint());

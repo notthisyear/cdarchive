@@ -131,10 +131,9 @@ namespace CdArchiveBackend.Services.External
             List<ReleaseCandidateDto> ranked;
             if (releases.Count > 0)
             {
-                // Browsed releases only have a track count per medium
                 // They're all releases of the right album, so rank them without leaving any out
                 ranked = releases
-                    .Select(r => r with { TrackCount = r.TrackCount ?? r.Media?.Sum(m => m.TrackCount ?? 0) })
+                    .Select(WithTrackCount)
                     .RankAndFilterReleases(title, numberOfTracks, releaseDate, artistNames, releaseType);
             }
             else
@@ -157,29 +156,49 @@ namespace CdArchiveBackend.Services.External
                     .RankAndFilterReleases(title, numberOfTracks, releaseDate, artistNames, releaseType, MinimumNumberOfReleasePoints);
             }
 
-            // Each name followed by its own join phrase: "A, B & C" is A + ", " + B + " & " + C + ""
-            static string GetArtistName(List<CreditDto>? credits)
-                => credits == null ? string.Empty : string.Concat(credits.Select(x => x.Name + (x.JoinPhrase ?? string.Empty)));
+            return new(HttpGetResult.Success, [.. ranked.Select(ToCandidate)]);
+        }
 
-            return new(HttpGetResult.Success, [.. ranked
-                .Select(r => new MusicBrainzReleaseCandidate(
-                    r.Id,
-                    r.ReleaseGroup?.Id ?? string.Empty,
-                    r.Title ?? string.Empty,
-                    GetArtistName(r.ArtistCredit),
-                    r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.Name)] : [],
-                    r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.ArtistDto?.Id ?? string.Empty)] : [],
-                    r.ArtistCredit != null ? [..r.ArtistCredit.Select(x => x.JoinPhrase ?? string.Empty)] : [],
-                    // Only known for releases found through their release group
-                    r.ReleaseGroup?.FirstReleaseDate,
-                    r.Date,
-                    r.ReleaseGroup?.PrimaryType,
-                    // Note: I haven't seen more than one media format, so let's just take the first one
-                    r.Media?.FirstOrDefault()?.Format ?? string.Empty,
-                    r.Country,
-                    r.Barcode,
-                    r.Disambiguation,
-                    r.TrackCount ?? 0))]);
+        // The releases an mbid the user gave us stands for: the release itself, or if it's a release
+        // group's, all of the group's releases, by date and then country (there's nothing to rank
+        // them by). MusicBrainz ids are unique across entity types, so trying it as a release first
+        // tells which it is. No releases if it's neither.
+        public async Task<ReleaseCandidateResult> LookUpReleaseCandidatesAsync(string mbid, ChannelProgress? channelProgress, CancellationToken ct)
+        {
+            // 1. A release?
+            var (release, getResult) = await GetCachedAsync<ReleaseCandidateDto>(
+                $"release/{Uri.EscapeDataString(mbid)}?inc=artist-credits+release-groups+media&fmt=json",
+                "Looking up the release",
+                channelProgress,
+                ct).ConfigureAwait(false);
+
+            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+                return new(getResult, []);
+
+            if (release is not null)
+                return new(HttpGetResult.Success, [ToCandidate(WithTrackCount(release))]);
+
+            // 2. A release group? Not only the official releases: the user asked for this group.
+            List<ReleaseCandidateDto> releases;
+            (releases, getResult) = await GetAllPagesAsync<ReleaseBrowseDto, ReleaseCandidateDto>(
+                $"release?release-group={Uri.EscapeDataString(mbid)}&inc=media+artist-credits+release-groups&fmt=json",
+                ReleasesInGroupPageLimit,
+                MaxReleasesInGroup,
+                body => (body.Releases, body.Count),
+                "Getting the album's releases",
+                channelProgress,
+                ct).ConfigureAwait(false);
+
+            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+                return new(getResult, []);
+
+            return new(releases.Count > 0 ? HttpGetResult.Success : HttpGetResult.NotFound, [.. releases
+                .Select(WithTrackCount)
+                // Undated last
+                .OrderBy(x => string.IsNullOrEmpty(x.Date))
+                .ThenBy(x => x.Date, StringComparer.Ordinal)
+                .ThenBy(x => x.Country, StringComparer.Ordinal)
+                .Select(ToCandidate)]);
         }
 
         public async Task<TrackListResult> GetTracklistAsync(string releaseMbid, ChannelProgress channelProgress, CancellationToken ct)
@@ -322,6 +341,63 @@ namespace CdArchiveBackend.Services.External
         }
         #endregion
 
+        // Gets one thing (e.g. a lookup by id), cached. Null if MusicBrainz doesn't know it.
+        private async Task<(TBody? Body, HttpGetResult Result)> GetCachedAsync<TBody>(string url,
+                                                                                    string step,
+                                                                                    ChannelProgress? channelProgress,
+                                                                                    CancellationToken ct) where TBody : class
+        {
+            HttpGetResult getResult = HttpGetResult.NotSet;
+            var cacheKey = $"mb:get:{url}";
+            var result = await _cache.GetOrCreateAsync(cacheKey, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = CacheTtl;
+                TBody? body;
+                (body, getResult) = await _httpClient.TryGet<TBody>(
+                    url,
+                    _limiter,
+                    _maxNumberOfAttempts,
+                    ct,
+                    step,
+                    channelProgress).ConfigureAwait(false);
+                return body;
+            }).ConfigureAwait(false);
+
+            // If we failed due to the the MusicBrainz server being unhelpful, let's not cache it
+            if (getResult == HttpGetResult.RateLimitedOrServiceUnavailable)
+            {
+                _cache.Remove(cacheKey);
+                return (null, getResult);
+            }
+
+            return (result, getResult);
+        }
+
+        // Browsed and looked-up releases only have a track count per medium
+        private static ReleaseCandidateDto WithTrackCount(ReleaseCandidateDto release)
+            => release with { TrackCount = release.TrackCount ?? release.Media?.Sum(m => m.TrackCount ?? 0) };
+
+        private static MusicBrainzReleaseCandidate ToCandidate(ReleaseCandidateDto r)
+            => new(
+                r.Id,
+                r.ReleaseGroup?.Id ?? string.Empty,
+                r.Title ?? string.Empty,
+                // Each name followed by its own join phrase: "A, B & C" is A + ", " + B + " & " + C + ""
+                r.ArtistCredit != null ? string.Concat(r.ArtistCredit.Select(x => x.Name + (x.JoinPhrase ?? string.Empty))) : string.Empty,
+                r.ArtistCredit != null ? [.. r.ArtistCredit.Select(x => x.Name)] : [],
+                r.ArtistCredit != null ? [.. r.ArtistCredit.Select(x => x.ArtistDto?.Id ?? string.Empty)] : [],
+                r.ArtistCredit != null ? [.. r.ArtistCredit.Select(x => x.JoinPhrase ?? string.Empty)] : [],
+                // Only known for releases found through or with their release group
+                r.ReleaseGroup?.FirstReleaseDate,
+                r.Date,
+                r.ReleaseGroup?.PrimaryType,
+                // Note: I haven't seen more than one media format, so let's just take the first one
+                r.Media?.FirstOrDefault()?.Format ?? string.Empty,
+                r.Country,
+                r.Barcode,
+                r.Disambiguation,
+                r.TrackCount ?? 0);
+
         // Gets every page of a search or browse (up to maxItems), cached as a whole. url is
         // everything but the offset and limit. unpack gives the items on a page and the total count.
         private async Task<(List<TItem> Items, HttpGetResult Result)> GetAllPagesAsync<TBody, TItem>(string url,
@@ -329,7 +405,7 @@ namespace CdArchiveBackend.Services.External
                                                                                                      int maxItems,
                                                                                                      Func<TBody, (List<TItem>? Items, int Count)> unpack,
                                                                                                      string step,
-                                                                                                     ChannelProgress channelProgress,
+                                                                                                     ChannelProgress? channelProgress,
                                                                                                      CancellationToken ct) where TBody : class
         {
             HttpGetResult getResult = HttpGetResult.NotSet;

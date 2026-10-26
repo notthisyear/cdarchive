@@ -102,7 +102,7 @@ namespace CdArchiveTests
                 coverArt,
                 wikimedia);
 
-            return new(db, mediaFiles, new CreatorService(db, mediaFiles, MediaUrls, musicBrainz), new ReleaseService(db, mediaFiles, MediaUrls));
+            return new(db, mediaFiles, new CreatorService(db, mediaFiles, MediaUrls, musicBrainz), new ReleaseService(db, mediaFiles, MediaUrls), musicBrainz);
         }
 
         public static FormFileCollection Files(params byte[][] contents)
@@ -131,7 +131,11 @@ namespace CdArchiveTests
         }
     }
 
-    internal sealed record TestRequest(DatabaseContext Db, MediaFileService MediaFiles, CreatorService Creators, ReleaseService Releases);
+    internal sealed record TestRequest(DatabaseContext Db,
+                                       MediaFileService MediaFiles,
+                                       CreatorService Creators,
+                                       ReleaseService Releases,
+                                       MusicBrainzService MusicBrainz);
 
     // Images, and what MusicBrainz, the Cover Art Archive and Wikimedia answer about one release
     // and one artist
