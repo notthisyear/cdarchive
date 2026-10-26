@@ -599,16 +599,36 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
 
                         // Create the artist
                         try {
+                            const musicBrainzId = artistMbid.value || null;
+
+                            // A looked-up photo is sent as the artist it was looked up for, and the
+                            // backend gets it again. If the user has since unlinked the artist
+                            // (e.g. by renaming them) the photo may be someone else's, so it's left out.
+                            let image = null;
+                            let imageFile = null;
+                            if (imageIsLookedUp) {
+                                if (musicBrainzId)
+                                    image = { source: "Wikimedia", externalId: musicBrainzId };
+                            }
+                            else if (artistImageUploader.getFile()) {
+                                imageFile = artistImageUploader.getFile();
+                                image = { source: "Upload", fileIndex: 0 };
+                            }
+
                             const artist = {
-                                name: artistName.value,
+                                name: artistName.value.trim(),
+                                sortName: null,     // The backend gets it from MusicBrainz
                                 type: artistType.value,
                                 country: artistCountryCode.value,
-                                musicBrainzId: artistMbid.value || null,
-                                imageUrl: artistImageUploader.getImageUrl(),
-                                spotifyUrl: artistSpotifyUrl.value,
+                                musicBrainzId,
+                                spotifyUrl: artistSpotifyUrl.value || null,
+                                image
                             };
-                            const artistId = await backendApi.addNewCreator(artist);
-                            Toast.success(`Artist "${artist.name}" added`, "New artist added");
+                            const { id: artistId, alreadyInCollection } = await backendApi.addNewCreator(artist, imageFile);
+                            if (alreadyInCollection)
+                                Toast.info(`"${artist.name}" was already in your collection, so that's the one used`, "Artist already added");
+                            else
+                                Toast.success(`Artist "${artist.name}" added`, "New artist added");
                             resolveOnce({ "name": artist.name, "id": artistId, "musicBrainzId": artist.musicBrainzId });
                         }
                         catch (e) {

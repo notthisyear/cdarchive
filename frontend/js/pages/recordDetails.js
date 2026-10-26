@@ -4,6 +4,7 @@ import * as styles from "../styles.js";
 import * as trackListing from "../components/trackListing.js"
 
 export async function render(params) {
+    // ReleaseDetails (see backendApi.getRelease)
     const record = await backendApi.getRelease(params.id);
 
     const root = document.createElement("div");
@@ -40,13 +41,10 @@ export async function render(params) {
                     </svg>
                 </button>
             
-                    <h1 class="text-3xl font-bold text-slate-900 dark:text-white">
-                        ${record.summary.name}
-                    </h1>
+                    <!-- Title and artist are set as text below, as they're whatever the user typed -->
+                    <h1 id="recordTitle" class="text-3xl font-bold text-slate-900 dark:text-white"></h1>
 
-                    <h2 class=" text-xl text-slate-600 dark:text-slate-300 mt-1">
-                        ${util.concatenateArtists(record.summary.artists)}
-                    </h2>
+                    <h2 id="recordArtist" class=" text-xl text-slate-600 dark:text-slate-300 mt-1"></h2>
 
                     <dl class="mt-6 space-y-4">
                         <div class="flex justify-between">
@@ -54,7 +52,7 @@ export async function render(params) {
                                 Year
                             </dt>
                             <dd>
-                                ${record.summary.year}
+                                ${record.summary.year ?? "N/a"}
                             </dd>
                         </div>
 
@@ -106,12 +104,15 @@ export async function render(params) {
         </div>
     `;
 
+    root.querySelector("#recordTitle").textContent = record.summary.title;
+    root.querySelector("#recordArtist").textContent = record.summary.artistName;
+
     // Without a cover, an empty square instead of a broken image
     const cover = root.querySelector("#recordCover");
     const coverSrc = backendApi.toImageSrc(record.summary.imageUrl);
     if (coverSrc) {
         cover.src = coverSrc;
-        cover.alt = record.summary.name;
+        cover.alt = record.summary.title;
     }
     else {
         cover.alt = "";

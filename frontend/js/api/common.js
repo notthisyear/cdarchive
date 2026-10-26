@@ -1,8 +1,9 @@
 import * as auth from "../auth.js";
 
 // Throws on any response that isn't ok. Pass { allowNotFound: true } to get 404 responses back
-// instead, for lookups where "not found" is a normal answer.
-export async function fetchFromUrl(url, { allowNotFound = false, ...options } = {}) {
+// instead, for lookups where "not found" is a normal answer, or the statuses to get back in
+// { allowStatuses: [...] } for other answers the caller handles itself.
+export async function fetchFromUrl(url, { allowNotFound = false, allowStatuses = [], ...options } = {}) {
     const token = auth.getToken();
     const headers = {
         ...options.headers,
@@ -16,7 +17,7 @@ export async function fetchFromUrl(url, { allowNotFound = false, ...options } = 
         headers
     });
 
-    if (allowNotFound && response.status === 404)
+    if ((allowNotFound && response.status === 404) || allowStatuses.includes(response.status))
         return response;
 
     // If we fail specifically with NotAuthorized while we had a token,
@@ -25,10 +26,23 @@ export async function fetchFromUrl(url, { allowNotFound = false, ...options } = 
         if (token && response.status == 401) {
             auth.logout()
         }
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(await getErrorMessage(response));
     }
 
     return response;
+}
+
+// The backend's own explanation ({ message: "..." }) where it gives one, else the status
+async function getErrorMessage(response) {
+    try {
+        const body = await response.json();
+        if (typeof body?.message === "string" && body.message.length > 0)
+            return body.message;
+    }
+    catch {
+        // Not JSON
+    }
+    return `HTTP ${response.status}`;
 }
 
 /**

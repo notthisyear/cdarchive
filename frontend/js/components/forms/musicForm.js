@@ -119,9 +119,6 @@ export function create({ onChange } = {}) {
                                         autocomplete="off"
                                         class="${styles.editorInputBox}"
                                         placeholder="Album name">
-                                    <!-- The chosen MusicBrainz release, if any -->
-                                    <input type="hidden" id="releaseMbid">
-                                    <input type="hidden" id="releaseGroupMbid">
                                 </div>
                                 <div class="min-w-0 sm:col-start-1 sm:row-start-2">
                                     <label class="${styles.addRecordInputBoxLabel}">
@@ -142,12 +139,12 @@ export function create({ onChange } = {}) {
                                     </button>
                                 </div>
 
-                                <!-- Year, duration and format on one line; wraps when the column is narrow -->
+                                <!-- Years, duration and format on one line; wraps when the column is narrow -->
                                 <div class="flex flex-wrap gap-4 min-w-0 sm:col-start-1 sm:row-start-3">
                                     <div class="w-24">
                                         <label for="recordYear"
                                             class="${styles.addRecordInputBoxLabel}">
-                                            Year
+                                            Release year
                                         </label>
                                         <input id="recordYear"
                                             name="year"
@@ -156,7 +153,25 @@ export function create({ onChange } = {}) {
                                             required
                                             pattern="[0-9]{4}"
                                             maxlength="4"
-                                            title="Enter a 4-digit year"
+                                            title="The year this release came out, e.g. of the remaster"
+                                            class="${styles.editorInputBox}"
+                                            placeholder="YYYY">
+                                    </div>
+
+                                    <!-- Optional: unknown when the album only comes from Spotify.
+                                         Wider than Year so the label fits on one line. -->
+                                    <div class="w-28">
+                                        <label for="recordFirstYear"
+                                            class="${styles.addRecordInputBoxLabel}">
+                                            First released
+                                        </label>
+                                        <input id="recordFirstYear"
+                                            name="firstYear"
+                                            type="text"
+                                            inputmode="numeric"
+                                            pattern="[0-9]{4}"
+                                            maxlength="4"
+                                            title="The year the album first came out"
                                             class="${styles.editorInputBox}"
                                             placeholder="YYYY">
                                     </div>
@@ -318,11 +333,10 @@ export function create({ onChange } = {}) {
     const albumSearch = root.querySelector("#albumSearch");
     const albumForm = root.querySelector("#albumForm");
     const recordName = root.querySelector("#recordName");
-    const releaseMbid = root.querySelector("#releaseMbid");
-    const releaseGroupMbid = root.querySelector("#releaseGroupMbid");
     const artistRows = root.querySelector("#artistRows");
     const addArtistBtn = root.querySelector("#addArtistBtn");
     const recordYear = root.querySelector("#recordYear");
+    const recordFirstYear = root.querySelector("#recordFirstYear");
     const durationHours = root.querySelector("#durationHours");
     const durationMinutes = root.querySelector("#durationMinutes");
     const durationSeconds = root.querySelector("#durationSeconds");
@@ -352,19 +366,34 @@ export function create({ onChange } = {}) {
         if (anyUnresolvedArtist)
             return { ok: false, reason: "At least one artist is unresolved" };
 
+        // Both are 4-digit years by now (checkValidity), unless the optional one is empty
+        if (recordFirstYear.value && Number(recordFirstYear.value) > Number(recordYear.value))
+            return { ok: false, reason: "The album can't have first come out after this release" };
+
         return { ok: true, reason: "" };
     }
 
     // Any typing inside the form (name, year, artist boxes...) may change validity.
     albumForm.addEventListener("input", notifyChanged);
 
+    // The chosen MusicBrainz release, if any
+    let chosenRelease = { id: null, releaseGroupId: null, barcode: null };
+
+    // The id of the album picked in the Spotify search, if any
+    let spotifyAlbumId = null;
+
     // The ids of the chosen MusicBrainz release stop matching once the user edits the form by hand.
     // A different year, duration or format is still the same release group (another pressing of
-    // the album), but a different title or artist isn't.
+    // the album), but a different title or artist isn't. The barcode belongs to the release itself.
+    // The Spotify album goes with the release group: Spotify has one album for all pressings.
     function clearReleaseIds({ keepReleaseGroup = false } = {}) {
-        releaseMbid.value = "";
+        chosenRelease = {
+            id: null,
+            releaseGroupId: keepReleaseGroup ? chosenRelease.releaseGroupId : null,
+            barcode: null
+        };
         if (!keepReleaseGroup)
-            releaseGroupMbid.value = "";
+            spotifyAlbumId = null;
     }
 
     recordName.addEventListener("input", () => clearReleaseIds());
@@ -530,6 +559,8 @@ export function create({ onChange } = {}) {
                 </button>
                 <input type="hidden" class="artist-id-input">
                 <input type="hidden" class="artist-mbid-input">
+                <!-- What follows this artist's name in the credit (" & ", " feat. "), from MusicBrainz -->
+                <input type="hidden" class="artist-joinphrase-input">
 
                  <ul class="artist-dropdown hidden absolute left-0 right-0 top-full mt-1 z-20
                        bg-slate-800 border border-slate-700 rounded-lg shadow-lg
@@ -628,6 +659,7 @@ export function create({ onChange } = {}) {
             name: row.querySelector(".artist-name-input").value.trim(),
             id: row.querySelector(".artist-id-input").value || null,
             musicBrainzId: row.querySelector(".artist-mbid-input").value || null,
+            joinPhrase: row.querySelector(".artist-joinphrase-input").value,
         })).filter(a => a.name.length > 0);
     }
 
@@ -636,6 +668,7 @@ export function create({ onChange } = {}) {
             name: recordName.value,
             artistName: getArtists(root),
             year: recordYear.value,
+            firstYear: recordFirstYear.value,
             durationHours: durationHours.value,
             durationMinutes: durationMinutes.value,
             durationSeconds: durationSeconds.value,
@@ -664,7 +697,11 @@ export function create({ onChange } = {}) {
     wireDurationSegment(durationMinutes, { next: durationSeconds, prev: durationHours });
     wireDurationSegment(durationSeconds, { prev: durationMinutes });
 
-    // Cover photo
+    // Cover photo. coverSource says where the one shown came from, for save(): a looked-up cover
+    // is sent as { source: "CoverArtArchive", externalId: <release mbid> } for the backend to get
+    // again, an uploaded one as { file }. Null when there's no cover.
+    let coverSource = null;
+
     function setCoverImage(url) {
         coverImage.src = url;
         coverImage.classList.remove("hidden");
@@ -680,6 +717,7 @@ export function create({ onChange } = {}) {
         removeCoverBtn.classList.add("hidden");
         removeCoverBtn.classList.remove("flex");
         coverFileInput.value = "";
+        coverSource = null;
     }
 
     uploadCoverOverlayBtn.addEventListener("click", () => coverFileInput.click());
@@ -690,6 +728,7 @@ export function create({ onChange } = {}) {
 
         // The user's own cover wins over one we're still looking for
         cancelCoverLookup();
+        coverSource = { file };
 
         const reader = new FileReader();
         reader.onload = () => setCoverImage(reader.result);
@@ -780,14 +819,18 @@ export function create({ onChange } = {}) {
         `;
     }
 
-    function setCover(cover) {
-        if (cover?.url)
+    // A cover looked up on the Cover Art Archive for a MusicBrainz release
+    function setCover(cover, releaseMbid) {
+        if (cover?.url) {
             setCoverImage(cover.url);
-        else
+            coverSource = { source: "CoverArtArchive", externalId: releaseMbid };
+        }
+        else {
             clearCoverImage();
+        }
     }
 
-    // Creators are { id, name, musicBrainzId? }. Those without an id are looked up by name.
+    // Creators are { id, name, musicBrainzId?, joinPhrase? }. Those without an id are looked up by name.
     async function setArtistRows(creators) {
         clearArtistRows();
         const unresolvedRows = [];
@@ -796,6 +839,7 @@ export function create({ onChange } = {}) {
             row.querySelector(".artist-name-input").value = creator.name;
             row.querySelector(".artist-id-input").value = creator.id ?? "";
             row.querySelector(".artist-mbid-input").value = creator.musicBrainzId ?? "";
+            row.querySelector(".artist-joinphrase-input").value = creator.joinPhrase ?? "";
             updateArtistStatus(row);
             artistRows.append(row);
             if (creator.id == null)
@@ -903,9 +947,10 @@ export function create({ onChange } = {}) {
             const creators = (album.artists ?? []).map(a => ({ id: null, name: a.name }));
 
             recordName.value = title ?? "";
-            releaseMbid.value = "";
-            releaseGroupMbid.value = "";
+            clearReleaseIds();
+            spotifyAlbumId = album.id ?? null;
             recordYear.value = album.release_date?.slice(0, 4) ?? "";
+            recordFirstYear.value = "";     // Spotify's date may be the remaster's; set from MusicBrainz below
             setFormat("");      // Spotify doesn't know; set from the MusicBrainz release below
             albumSearch.value = [util.concatenateArtists(creators), title].filter(x => x).join(" - ");
             clearCoverImage();
@@ -974,8 +1019,11 @@ export function create({ onChange } = {}) {
             }
         }
 
-        releaseMbid.value = release.id ?? "";
-        releaseGroupMbid.value = release.releaseGroupId ?? "";
+        chosenRelease = {
+            id: release.id ?? null,
+            releaseGroupId: release.releaseGroupId ?? null,
+            barcode: release.barcode ?? null
+        };
         setFormat(musicbrainzApi.toReleaseFormat(release.mediaType));
 
         // The release's own title and year win over Spotify's, which often has edition info in the
@@ -986,14 +1034,16 @@ export function create({ onChange } = {}) {
         const year = /^\d{4}/.exec(release.date ?? "")?.[0];
         if (year)
             recordYear.value = year;
+        recordFirstYear.value = /^\d{4}/.exec(release.firstReleaseDate ?? "")?.[0] ?? "";
 
-        // MusicBrainz's artist credit is more reliable than Spotify's, and gives us their ids.
-        // artists and artistIds are parallel arrays, one entry per artist.
+        // MusicBrainz's artist credit is more reliable than Spotify's, and gives us their ids and
+        // join phrases. artists, artistIds and joinPhrases are parallel arrays, one entry per artist.
         if (release.artists?.length > 0) {
             await setArtistRows(release.artists.map((name, i) => ({
                 id: null,
                 name,
-                musicBrainzId: release.artistIds?.[i] ?? null
+                musicBrainzId: release.artistIds?.[i] ?? null,
+                joinPhrase: release.joinPhrases?.[i] ?? ""
             })));
             if (!isCurrent())
                 return;
@@ -1036,7 +1086,7 @@ export function create({ onChange } = {}) {
             setCoverLoading(false);
 
             if (coverResult.status === "fulfilled") {
-                setCover(coverResult.value);
+                setCover(coverResult.value, release.id);
                 if (!coverResult.value?.url)
                     problems.push("No cover art found for this release, you can upload one yourself.");
             }
@@ -1112,29 +1162,72 @@ export function create({ onChange } = {}) {
 
     const baseline = JSON.stringify(getState());
 
-    async function save() {
-        const duration = [
-            durationHours.value,
-            durationMinutes.value,
-            durationSeconds.value
-        ].map(x => x.padStart(2, "0")).join(":");
+    // A 4-digit year as a number, or null for an empty box
+    function toYear(value) {
+        return /^\d{4}$/.test(value.trim()) ? Number(value.trim()) : null;
+    }
 
-        const newRecordRequest = {
-            summary: {
-                name: recordName.value,
-                artists: getArtists(root),
-                year: recordYear.value,
-                imageUrl: coverImage.src,
-                spotifyLink: "",    // Still expected by the backend
-            },
-            durationSeconds: util.parseDurationToSeconds(duration),
+    // Seconds, or null when no part of the duration is filled in
+    function getDurationSeconds() {
+        const parts = [durationHours.value, durationMinutes.value, durationSeconds.value];
+        if (parts.every(x => x.trim() === ""))
+            return null;
+        return util.parseDurationToSeconds(parts.map(x => x.padStart(2, "0")).join(":"));
+    }
+
+    // Sends the form as a NewReleaseRequest (see backendApi.addNewRelease). getValidity() has
+    // made sure every artist is resolved to a creator id.
+    async function save() {
+        const artists = getArtists(root);
+        const credits = artists.map((artist, i) => ({
+            creatorId: Number(artist.id),
+            role: "Primary",
+            // Nothing follows the last name. Artists added by hand have no join phrase of their
+            // own, so they're joined with " & ".
+            joinPhrase: i === artists.length - 1 ? "" : (artist.joinPhrase || " & "),
+            characterName: null
+        }));
+
+        const tracks = trackListing.getAllTracks().map(track => ({
+            discNumber: Number(track.discNumber),
+            trackNumber: Number(track.trackNumber),
+            title: track.title,
+            durationSeconds: Number.isFinite(track.durationSeconds) ? track.durationSeconds : null
+        }));
+
+        // The cover is the only image the form has, so it's the first (and the preferred one)
+        const images = [];
+        const imageFiles = [];
+        if (coverSource?.file) {
+            images.push({ source: "Upload", externalId: null, fileIndex: imageFiles.length });
+            imageFiles.push(coverSource.file);
+        }
+        else if (coverSource?.externalId) {
+            images.push({ source: coverSource.source, externalId: coverSource.externalId, fileIndex: null });
+        }
+
+        const request = {
+            title: recordName.value.trim(),
+            type: "Record",
+            status: "Owned",
             format: recordFormat.value || "Unknown",
-            tracks: trackListing.getAllTracks()
+            releaseYear: toYear(recordYear.value),
+            firstReleaseYear: toYear(recordFirstYear.value),
+            durationSeconds: getDurationSeconds(),
+            barcode: chosenRelease.barcode,
+            musicBrainzReleaseId: chosenRelease.id,
+            musicBrainzReleaseGroupId: chosenRelease.releaseGroupId,
+            spotifyAlbumId,
+            notes: null,
+            score: null,
+            acquiredOn: null,
+            credits,
+            tracks,
+            images
         };
 
-        // TODO: Maybe it'd be nice to catch if we added something already had with another message
-        await backendApi.addNewRelease(newRecordRequest);
-        return recordName.value;
+        await backendApi.addNewRelease(request, imageFiles);
+        return request.title;
     }
 
     return {

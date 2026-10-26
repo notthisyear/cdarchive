@@ -31,9 +31,13 @@ export function cleanAlbumTitle(title) {
 /**
  * The MusicBrainz releases matching this album, best first. There's often more than one, e.g.
  * the CD, LP and digital release of the same album:
- *   [{ id, releaseGroupId, title, artist, artists, artistIds, date, releaseType, mediaType, country, disambiguation, trackCount }]
- * artists and artistIds are parallel arrays with one name and MusicBrainz id per credited artist.
- * date, releaseType, mediaType, country and disambiguation may be null, and trackCount 0 if unknown.
+ *   [{ id, releaseGroupId, title, artistCombined, artists, artistIds, joinPhrases, firstReleaseDate, date,
+ *      releaseType, mediaType, country, barcode, disambiguation, trackCount }]
+ * artists, artistIds and joinPhrases are parallel arrays with one name, MusicBrainz id and join
+ * phrase (what follows the name, like " & ", and "" after the last) per credited artist.
+ * firstReleaseDate is the release group's, i.e. when the album first came out, and date this release's.
+ * firstReleaseDate, date, releaseType, mediaType, country, barcode and disambiguation may be null,
+ * and trackCount 0 if unknown.
  *
  * releaseDate ("YYYY-MM-DD") and totalTracks are optional hints that help the backend rank them.
  * Streamed as server-sent events, so pass onProgress to hear how it's going and signal to cancel.

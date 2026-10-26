@@ -144,7 +144,7 @@ export function choose(releases) {
         const intro = document.createElement("p");
         intro.className = "text-slate-600 dark:text-slate-300";
         intro.textContent = `MusicBrainz has ${releases.length} releases of "${first.title}"`
-            + (first.artist ? ` by ${first.artist}` : "")
+            + (first.artistCombined ? ` by ${first.artistCombined}` : "")
             + ". Which one do you have?";
         root.append(intro);
 
