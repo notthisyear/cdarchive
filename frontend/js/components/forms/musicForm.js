@@ -77,13 +77,27 @@ export function create({ onChange } = {}) {
         <div id="addRecordDialog"
              class="flex flex-col max-h-[calc(80vh-3.5rem)] overflow-hidden space-y-6">
             
-             <!-- Search section -->
+             <!-- Search section: Spotify's search, or a MusicBrainz release or release group by URL
+                  or id. Wraps so the search box gets the full width when the dialog is narrow. -->
             <section class="space-y-4 shrink-0">
-                <div class="relative">
-                    <input id="albumSearch"
-                           class="${styles.editorInputBox} w-full"
-                           type="text"
-                           placeholder="Search Spotify..." />
+                <div class="flex flex-wrap items-center gap-2">
+                    <label for="searchSource"
+                           class="text-sm text-slate-500 dark:text-slate-400 shrink-0">
+                        Search on
+                    </label>
+                    <div class="w-40 shrink-0">
+                        <select id="searchSource"
+                                class="${styles.editorInputBox}">
+                            <option value="spotify">Spotify</option>
+                            <option value="musicbrainz">MusicBrainz</option>
+                        </select>
+                    </div>
+                    <div class="relative flex-1 min-w-36">
+                        <input id="albumSearch"
+                               class="${styles.editorInputBox} w-full"
+                               type="text"
+                               placeholder="Search Spotify..." />
+                    </div>
                 </div>
             </section>
             
@@ -330,6 +344,7 @@ export function create({ onChange } = {}) {
     `;
 
     // Elements
+    const searchSource = root.querySelector("#searchSource");
     const albumSearch = root.querySelector("#albumSearch");
     const albumForm = root.querySelector("#albumForm");
     const recordName = root.querySelector("#recordName");
@@ -793,11 +808,8 @@ export function create({ onChange } = {}) {
     // Spotify is much better at fuzzy search than MusicBrainz, so the user searches Spotify. The
     // album they pick is then looked up on MusicBrainz, which gives us the track list of the exact
     // release they own and its cover art (it's unclear whether we may store Spotify's images).
-    // Without Spotify the user can still fill in the form by hand.
-    if (!auth.hasSpotifyToken()) {
-        albumSearch.disabled = true;
-        albumSearch.placeholder = "Log in to Spotify to search";
-    }
+    // Without Spotify, the user can paste a MusicBrainz URL or id instead (see setSearchSource()),
+    // or fill in the form by hand.
 
     function renderAlbumOption({ imageUrl, title, subtitle }) {
         const image = imageUrl
@@ -922,7 +934,15 @@ export function create({ onChange } = {}) {
         }
     }
 
+    // album is null for a release looked up by its MusicBrainz id: then there's no track list to
+    // fall back on, and the user adds the tracks themselves
     async function fallBackToSpotify(album, { isCurrent }, message, onRetry = null) {
+        if (!album) {
+            setTracksLoading(false);
+            showLookupStatus(message, { busy: false, onRetry });
+            return;
+        }
+
         setTracksLoading(true);
         const tracks = await getSpotifyTracks(album);
         if (!isCurrent())
@@ -1001,7 +1021,15 @@ export function create({ onChange } = {}) {
             return;
         }
 
-        // 3. Let the user pick a release
+        await useReleases(releases, album, lookup);
+    }
+
+    // Step 3, and on to step 4: lets the user pick one of releases (if there's more than one) and
+    // fills in the form from it. album is the Spotify album they came from, or null when they gave
+    // us a MusicBrainz id (see lookUpReleaseByMbid()).
+    async function useReleases(releases, album, lookup) {
+        const { isCurrent } = lookup;
+
         let release = releases[0];
         if (releases.length > 1) {
             setTracksLoading(false);
@@ -1014,7 +1042,10 @@ export function create({ onChange } = {}) {
                 return;
 
             if (release === null) {
-                await fallBackToSpotify(album, lookup, "No release chosen, so the track list is from Spotify. You can upload a cover yourself.");
+                if (album)
+                    await fallBackToSpotify(album, lookup, "No release chosen, so the track list is from Spotify. You can upload a cover yourself.");
+                else
+                    showLookupStatus("No release chosen.", { busy: false });
                 return;
             }
         }
@@ -1115,9 +1146,10 @@ export function create({ onChange } = {}) {
                 setTracks(tracksResult.value);
             }
             else {
-                await fallBackToSpotify(album, lookup,
-                    ["Couldn't get the track list from MusicBrainz, so it's from Spotify.", ...problems].join(" "),
-                    retry);
+                const tracksProblem = album
+                    ? "Couldn't get the track list from MusicBrainz, so it's from Spotify."
+                    : "Couldn't get the track list from MusicBrainz, you can add the tracks yourself.";
+                await fallBackToSpotify(album, lookup, [tracksProblem, ...problems].join(" "), retry);
                 return;
             }
         }
@@ -1128,26 +1160,162 @@ export function create({ onChange } = {}) {
             hideLookupStatus();
     }
 
-    autocompletes.set(nextArtistBoxId++, new Autocomplete({
-        input: albumSearch,
-        maxVisibleItems: 5,
-        async search(q) {
-            return await spotifyApi.searchOnSpotify(q, "album", 10, 0, (b) => {
-                return b.albums.total > 0 ? b.albums.items : [];
-            });
-        },
-        renderItem(album) {
-            return renderAlbumOption({
-                imageUrl: album.images?.at(-1)?.url,
-                title: album.name,
-                subtitle: `${util.concatenateArtists(album.artists ?? [])} • ${album.release_date ?? ""}`
-            });
-        },
-        async onSelected(album) {
-            await lookUpAlbum(album);
+    // Fills in the form for a release the user gave the MusicBrainz URL or id of, or for one of
+    // the releases of a release group they gave it for. Like lookUpAlbum() from step 3 on, except
+    // that there's no Spotify album to start from or fall back on. Never throws.
+    async function lookUpReleaseByMbid(mbid) {
+        await runAlbumLookup(async lookup => {
+            const { signal, isCurrent, onProgress } = lookup;
+
+            // Whatever was in the form belongs to another album
+            recordName.value = "";
+            clearReleaseIds();      // also forgets a Spotify album picked before
+            recordYear.value = "";
+            recordFirstYear.value = "";
+            setFormat("");
+            clearCoverImage();
+            trackListing.clearAllTracks(trackList);
+            setDuration(0);
+            await setArtistRows([]);
             notifyChanged();
+
+            setTracksLoading(true);
+            setCoverLoading(true);
+            showLookupStatus("Looking up the release on MusicBrainz...");
+
+            let releases;
+            try {
+                releases = await musicbrainzApi.lookUpReleases(mbid, { signal, onProgress });
+            }
+            catch (e) {
+                if (isAbort(e) || !isCurrent())
+                    return;
+                console.warn("MusicBrainz lookup failed:", e);
+                setTracksLoading(false);
+                setCoverLoading(false);
+                showLookupStatus("Couldn't reach MusicBrainz.", { busy: false, onRetry: () => lookUpReleaseByMbid(mbid) });
+                return;
+            }
+
+            if (!isCurrent())
+                return;
+
+            if (releases.length === 0) {
+                setTracksLoading(false);
+                setCoverLoading(false);
+                showLookupStatus("MusicBrainz has no release or release group with this ID.", { busy: false });
+                return;
+            }
+
+            await useReleases(releases, null, lookup);
+        });
+    }
+
+    // Where the search box searches: "spotify" (search with suggestions as you type) or
+    // "musicbrainz" (paste a release or release group URL or id). The user's choice is remembered;
+    // before they've made one, it's Spotify if they're logged in to it.
+    const SEARCH_SOURCE_STORAGE_KEY = "cdarchive.albumSearchSource";
+    const ALBUM_AUTOCOMPLETE_KEY = "albumSearch";      // in autocompletes, next to the artist boxes'
+    let lastLookedUpMbid = null;
+
+    function createAlbumAutocomplete() {
+        return new Autocomplete({
+            input: albumSearch,
+            maxVisibleItems: 5,
+            async search(q) {
+                return await spotifyApi.searchOnSpotify(q, "album", 10, 0, (b) => {
+                    return b.albums.total > 0 ? b.albums.items : [];
+                });
+            },
+            renderItem(album) {
+                return renderAlbumOption({
+                    imageUrl: album.images?.at(-1)?.url,
+                    title: album.name,
+                    subtitle: `${util.concatenateArtists(album.artists ?? [])} • ${album.release_date ?? ""}`
+                });
+            },
+            async onSelected(album) {
+                await lookUpAlbum(album);
+                notifyChanged();
+            }
+        });
+    }
+
+    function getRememberedSearchSource() {
+        try {
+            const remembered = localStorage.getItem(SEARCH_SOURCE_STORAGE_KEY);
+            if (remembered === "spotify" || remembered === "musicbrainz")
+                return remembered;
         }
-    }));
+        catch {
+            // No storage (private window, blocked site data...): fall back on the default
+        }
+        return auth.hasSpotifyToken() ? "spotify" : "musicbrainz";
+    }
+
+    function setSearchSource(source, { remember = false } = {}) {
+        searchSource.value = source;
+        if (remember) {
+            try {
+                localStorage.setItem(SEARCH_SOURCE_STORAGE_KEY, source);
+            }
+            catch {
+                // Not remembered then, which is fine
+            }
+        }
+
+        // Spotify's suggestions only belong to the Spotify search
+        autocompletes.get(ALBUM_AUTOCOMPLETE_KEY)?.dispose();
+        autocompletes.delete(ALBUM_AUTOCOMPLETE_KEY);
+        albumSearch.value = "";
+        lastLookedUpMbid = null;
+        if (albumLookup === null)
+            hideLookupStatus();
+
+        if (source === "spotify") {
+            // Without a Spotify login there's nothing to search with
+            const loggedIn = auth.hasSpotifyToken();
+            albumSearch.disabled = !loggedIn;
+            albumSearch.placeholder = loggedIn ? "Search Spotify..." : "Log in to Spotify to search";
+            if (loggedIn)
+                autocompletes.set(ALBUM_AUTOCOMPLETE_KEY, createAlbumAutocomplete());
+        }
+        else {
+            albumSearch.disabled = false;
+            albumSearch.placeholder = "Paste a MusicBrainz URL or ID";
+        }
+    }
+
+    searchSource.addEventListener("change", () => setSearchSource(searchSource.value, { remember: true }));
+
+    // MusicBrainz: look up what's pasted or typed as soon as it's a release (group) URL or id
+    albumSearch.addEventListener("input", () => {
+        if (searchSource.value !== "musicbrainz")
+            return;
+
+        const text = albumSearch.value.trim();
+        const mbid = musicbrainzApi.parseReleaseMbid(text);
+        if (mbid) {
+            if (mbid !== lastLookedUpMbid) {
+                lastLookedUpMbid = mbid;
+                lookUpReleaseByMbid(mbid);
+            }
+            return;
+        }
+
+        lastLookedUpMbid = null;
+
+        // Don't cover up how a lookup that's under way is going
+        if (albumLookup !== null)
+            return;
+
+        if (text === "")
+            hideLookupStatus();
+        else
+            showLookupStatus("Not a MusicBrainz release or release group URL or ID.", { busy: false });
+    });
+
+    setSearchSource(getRememberedSearchSource());
 
     // Track listing
     root.querySelector("#addTrackBtn").addEventListener("click", () => {

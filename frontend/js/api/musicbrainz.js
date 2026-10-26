@@ -65,6 +65,34 @@ export async function findReleases({ title, artists, releaseDate, totalTracks, r
     return (await common.streamFromUrl(url, { onProgress, signal })) ?? [];
 }
 
+const MBID = String.raw`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`;
+const BARE_MBID = new RegExp(`^${MBID}$`, "i");
+const RELEASE_URL = new RegExp(String.raw`^(?:https?://)?(?:[a-z]+\.)?musicbrainz\.org/(?:release|release-group)/(${MBID})(?:[/?#].*)?$`, "i");
+
+/**
+ * The mbid in what the user pasted to look up a release: a MusicBrainz release or release group
+ * URL ("https://musicbrainz.org/release-group/<mbid>", also with more after it, like "/cover-art"),
+ * or a bare mbid. Lower-cased, as MusicBrainz writes them. Null for anything else, including
+ * URLs of other things (artists, recordings...).
+ */
+export function parseReleaseMbid(text) {
+    const trimmed = text?.trim() ?? "";
+    if (BARE_MBID.test(trimmed))
+        return trimmed.toLowerCase();
+
+    return RELEASE_URL.exec(trimmed)?.[1].toLowerCase() ?? null;
+}
+
+/**
+ * The releases a MusicBrainz id stands for, in the same shape as findReleases(): the release
+ * itself if it's a release's id, or all releases of the group (by date) if it's a release
+ * group's. Empty if it's neither. Streamed like findReleases().
+ */
+export async function lookUpReleases(mbid, { onProgress, signal } = {}) {
+    const url = `${MUSICBRAINZ_API_URL}/records/lookup/stream?${new URLSearchParams({ mbid })}`;
+    return (await common.streamFromUrl(url, { onProgress, signal })) ?? [];
+}
+
 /**
  * The MusicBrainz artists matching this name, best first. There may be several, e.g. for "Prince":
  *   [{ id, name, country, type, disambiguation }]
