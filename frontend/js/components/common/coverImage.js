@@ -1,4 +1,5 @@
-// A release's cover from our own backend, or a box saying there's none in its place.
+// An image from our own backend (a release's cover, an artist's photo), or a box saying there's
+// none in its place. The box says "No cover art" unless given another placeholder text.
 //
 //   const cover = createCoverImage({
 //       src: backendApi.toImageSrc(release.imageUrl),     // null when there's no cover

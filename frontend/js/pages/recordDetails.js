@@ -3,6 +3,9 @@ import * as util from "../util.js"
 import * as styles from "../styles.js";
 import * as trackListing from "../components/trackListing.js"
 import { createCoverImage } from "../components/common/coverImage.js";
+import * as Modal from "../components/modal.js";
+import * as Toast from "../components/toast.js";
+import * as router from "../router.js";
 
 export async function render(params) {
     // ReleaseDetails (see backendApi.getRelease)
@@ -70,6 +73,12 @@ export async function render(params) {
                         </div>
                     </dl>
                 </div>
+
+                <button id="removeReleaseButton"
+                        type="button"
+                        class="${styles.buttonDanger} w-full">
+                    Remove from collection
+                </button>
             </div>
 
             <!-- Right side -->
@@ -102,7 +111,6 @@ export async function render(params) {
     root.querySelector("#recordTitle").textContent = record.summary.title;
     root.querySelector("#recordArtist").textContent = record.summary.artistName;
 
-    // Without a cover, an empty square instead of a broken image
     // Without a cover, a square box saying so, as wide as a cover would be
     root.querySelector("#recordCover").replaceWith(createCoverImage({
         src: backendApi.toImageSrc(record.summary.imageUrl),
@@ -125,5 +133,78 @@ export async function render(params) {
     const addTrackButton = root.querySelector("#addTrackButton");
     addTrackButton.addEventListener("click", () => trackListing.addEmptyTrackRow(trackListElement));
 
+    const removeReleaseButton = root.querySelector("#removeReleaseButton");
+    removeReleaseButton.addEventListener("click", async () => {
+        removeReleaseButton.disabled = true;
+        try {
+            await removeRelease(record);
+        }
+        finally {
+            removeReleaseButton.disabled = false;
+        }
+    });
+
     return root;
+}
+
+// The artist's image beside the question, so it's clear whom it's about. creator is a CreatorSummary.
+function createArtistQuestion(creator, question) {
+    const element = document.createElement("div");
+    element.className = "flex items-center gap-4";
+
+    const text = document.createElement("p");
+    text.className = "flex-1 min-w-0";
+    text.textContent = question;
+
+    element.append(
+        createCoverImage({
+            src: backendApi.toImageSrc(creator.imageUrl),
+            alt: creator.name,
+            className: "shrink-0 w-24 h-24 rounded-lg",
+            placeholderClassName: "text-xs bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
+            placeholder: "No image"
+        }),
+        text);
+    return element;
+}
+
+// Asks first, then removes the release and goes back to the collection. An artist who's on none of
+// the user's releases anymore is offered for removal too, one at a time. Never throws.
+async function removeRelease(record) {
+    const { id, title, artistName } = record.summary;
+    const description = artistName ? `"${title}" by ${artistName}` : `"${title}"`;
+    if (!await Modal.confirm("Remove release?", `Remove ${description} from your collection? This can't be undone.`,
+        { yesText: "Remove", noText: "Cancel", danger: true })) {
+        return;
+    }
+
+    let removed;
+    try {
+        removed = await backendApi.removeRelease(id);
+    }
+    catch (e) {
+        Toast.error(e.message, "Removing the release failed");
+        return;
+    }
+
+    Toast.success(`${description} was removed from your collection`, "Release removed");
+
+    // The release is gone either way, so its page is too
+    await router.navigate("/");
+
+    for (const creator of removed.creatorsWithoutReleases ?? []) {
+        if (!await Modal.confirm("Remove artist too?",
+            createArtistQuestion(creator, `"${creator.name}" isn't on any other release in your collection. Remove them as well?`),
+            { yesText: "Remove artist", noText: "Keep", danger: true })) {
+            continue;
+        }
+
+        try {
+            await backendApi.removeCreator(creator.id);
+            Toast.success(`"${creator.name}" was removed from your collection`, "Artist removed");
+        }
+        catch (e) {
+            Toast.error(e.message, `Removing "${creator.name}" failed`);
+        }
+    }
 }

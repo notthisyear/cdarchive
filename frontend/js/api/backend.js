@@ -53,6 +53,27 @@ export async function getRelease(releaseId) {
 }
 
 /**
+ * Removes one of the user's releases. Resolves with the artists it credited who are on none of the
+ * user's releases anymore, by sort name, for asking whether to remove them too:
+ *   { creatorsWithoutReleases: [{ id, name }] }
+ * Throws if it isn't theirs (or is already gone).
+ */
+export async function removeRelease(releaseId) {
+    const url = new URL(`/api/releases/${encodeURIComponent(releaseId)}`, window.location.origin);
+    const response = await common.fetchFromUrl(url, { method: "DELETE" });
+    return await response.json();
+}
+
+/**
+ * Removes one of the user's creators. Only one no release credits anymore can be removed: throws
+ * otherwise, and if it isn't theirs (or is already gone).
+ */
+export async function removeCreator(creatorId) {
+    const url = new URL(`/api/creators/${encodeURIComponent(creatorId)}`, window.location.origin);
+    await common.fetchFromUrl(url, { method: "DELETE" });
+}
+
+/**
  * The user's creators whose name or sort name contains name, for picking from:
  *   { creators: [{ id, name, type, country, imageUrl, musicBrainzId }], matchId }
  * matchId is the creator the name clearly stands for, or null if it's unclear: the one linked to

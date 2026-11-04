@@ -151,22 +151,28 @@ export function show(options) {
     return modal;
 }
 
-export async function confirm(title, message) {
+// Resolves with true for yes, false for no. For something that can't be undone, name what it does
+// and mark it dangerous: confirm(title, message, { yesText: "Remove", noText: "Cancel", danger: true }).
+// message is text, or an element for more than that (e.g. with an image).
+export async function confirm(title, message, { yesText = "Yes", noText = "No", danger = false } = {}) {
     return new Promise(resolve => {
-        const body = document.createElement("p");
-        body.textContent = message;
+        let body = message;
+        if (!(message instanceof Node)) {
+            body = document.createElement("p");
+            body.textContent = message;
+        }
         show({
             title,
             content: body,
             buttons: [
                 {
-                    "text": "No",
+                    "text": noText,
                     "className": styles.buttonSecondary,
                     "action": () => resolve(false)
                 },
                 {
-                    "text": "Yes",
-                    "className": styles.buttonPrimary,
+                    "text": yesText,
+                    "className": danger ? styles.buttonDanger : styles.buttonPrimary,
                     "action": () => resolve(true)
                 }
             ],
