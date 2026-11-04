@@ -112,6 +112,8 @@ export const editorInputBox = `
     py-2
     invalid:[&:not(:placeholder-shown)]:border-red-500
     invalid:[&:not(:placeholder-shown)]:ring-red-500/20
+    disabled:opacity-50
+    disabled:cursor-not-allowed
 `;
 
 export const buttonPrimary = `
