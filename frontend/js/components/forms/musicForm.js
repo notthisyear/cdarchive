@@ -386,8 +386,9 @@ export function create({ onChange } = {}) {
     // Any typing inside the form (name, year, artist boxes...) may change validity.
     albumForm.addEventListener("input", notifyChanged);
 
-    // The chosen MusicBrainz release, if any
-    let chosenRelease = { id: null, releaseGroupId: null, barcode: null };
+    // The chosen MusicBrainz release, if any. Its barcode and country are this release's, so they go
+    // when it does.
+    let chosenRelease = { id: null, releaseGroupId: null, barcode: null, country: null };
 
     // The id of the album picked in the Spotify search, if any
     let spotifyAlbumId = null;
@@ -400,7 +401,8 @@ export function create({ onChange } = {}) {
         chosenRelease = {
             id: null,
             releaseGroupId: keepReleaseGroup ? chosenRelease.releaseGroupId : null,
-            barcode: null
+            barcode: null,
+            country: null
         };
         if (!keepReleaseGroup)
             spotifyAlbumId = null;
@@ -1100,7 +1102,8 @@ export function create({ onChange } = {}) {
         chosenRelease = {
             id: release.id ?? null,
             releaseGroupId: release.releaseGroupId ?? null,
-            barcode: release.barcode ?? null
+            barcode: release.barcode ?? null,
+            country: release.country ?? null
         };
         setFormat(musicbrainzApi.toReleaseFormat(release.mediaType));
 
@@ -1435,6 +1438,7 @@ export function create({ onChange } = {}) {
             firstReleaseYear: toYear(recordFirstYear.value),
             durationSeconds: getDurationSeconds(),
             barcode: chosenRelease.barcode,
+            country: chosenRelease.country,
             musicBrainzReleaseId: chosenRelease.id,
             musicBrainzReleaseGroupId: chosenRelease.releaseGroupId,
             spotifyAlbumId,
