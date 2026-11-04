@@ -112,6 +112,13 @@ export function base64encode(s) {
         .replace(/\//g, '_');
 }
 
+// For putting text from anywhere but our own code (Spotify, MusicBrainz, what users typed) into HTML
+export function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[c]);
+}
+
 export function concatenateArtists(artists) {
     let i = 0;
     const result = [];
