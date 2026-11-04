@@ -12,7 +12,7 @@ import * as lookupStatusLine from "./common/lookupStatus.js";
 import * as mediaIcons from "./common/mediaIcons.js";
 import * as countries from "./common/countries.js";
 import * as artworkImage from "./common/artworkImage.js";
-import { createFlagElement } from "./common/countryFlag.js";
+import { createCountryPicker } from "./common/countryPicker.js";
 
 import { Autocomplete } from "./autocomplete.js";
 import { escapeHtml } from "../util.js";
@@ -46,7 +46,7 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
                 return;
             resolved = true;
             cancelLookups();
-            countryAutocomplete.dispose();
+            countryPicker.dispose();
             artistAutocomplete.dispose();
             resolve(value);
         }
@@ -101,34 +101,8 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
                                                        class="${styles.addRecordInputBoxLabel}">
                                                     Country
                                                 </label>
-                                                <div class="flex items-center gap-2">
-                                                    <!-- Free text to filter the list, but a country must be picked from it.
-                                                         The picked country's code goes in the hidden field. -->
-                                                    <div class="relative flex-1 min-w-0">
-                                                        <input id="artistCountry"
-                                                                type="text"
-                                                                required
-                                                                autocomplete="off"
-                                                                class="${styles.editorInputBox} w-full pr-8"
-                                                                placeholder="Search..." />
-                                                        <button type="button"
-                                                                id="artistCountryToggle"
-                                                                class="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 hover:text-slate-200"
-                                                                tabindex="-1"
-                                                                aria-label="Show countries">
-                                                            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                                                                <path fill-rule="evenodd"
-                                                                      d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
-                                                                      clip-rule="evenodd" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                    <input type="hidden" id="artistCountryCode">
-                                                    <!-- Flag of the picked country; keeps its width while empty -->
-                                                    <span id="artistCountryFlag"
-                                                          class="shrink-0 w-8 flex items-center justify-center"
-                                                          aria-hidden="true"></span>
-                                                </div>
+                                                <!-- A countryPicker: a country must be picked from its list -->
+                                                <div id="artistCountrySlot"></div>
                                             </div>
                                         </div>
 
@@ -281,7 +255,7 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
                 return;
 
             const { type, country } = musicBrainzValues;
-            if ((type && artistType.value !== type) || (country && artistCountryCode.value !== country))
+            if ((type && artistType.value !== type) || (country && countryPicker.getCode() !== country))
                 unlinkMusicBrainzArtist();
         }
 
@@ -311,76 +285,20 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
             setConfirmButtonStatus();
         });
 
-        // Country. The text box only filters the list: the country counts once it's picked from
-        // it (or its full name is typed), which puts its code in the hidden field.
-        const artistCountry = root.querySelector("#artistCountry");
-        const artistCountryCode = root.querySelector("#artistCountryCode");
-        const artistCountryFlag = root.querySelector("#artistCountryFlag");
-        const artistCountryToggle = root.querySelector("#artistCountryToggle");
-
-        function updateCountryFlag() {
-            const flag = artistCountryCode.value ? createFlagElement(artistCountryCode.value) : null;
-            if (flag)
-                flag.className = "h-5 w-auto rounded-sm";
-            artistCountryFlag.replaceChildren(...(flag ? [flag] : []));
-        }
+        // Country. The text box only filters the list: the country counts once it's picked from it
+        // (or its full name is typed). A country the user picks may contradict MusicBrainz.
+        const countryPicker = createCountryPicker({
+            id: "artistCountry",
+            required: true,
+            onChange: () => setConfirmButtonStatus(),
+            onPicked: () => unlinkIfContradictingMusicBrainz()
+        });
+        root.querySelector("#artistCountrySlot").replaceWith(countryPicker.element);
 
         // An unknown or missing code shows as not chosen
         function setCountry(code) {
-            const country = countries.byCode(code);
-            artistCountry.value = country?.name ?? "";
-            artistCountryCode.value = country?.code ?? "";
-            updateCountryFlag();
-            setConfirmButtonStatus();
+            countryPicker.setCode(code);
         }
-
-        function renderCountryOption(country) {
-            const flag = createFlagElement(country.code);
-            return `
-                <div class="flex items-center gap-2">
-                    ${flag ? flag.outerHTML : ""}
-                    <span>${country.name}</span>
-                </div>`;
-        }
-
-        const countryAutocomplete = new Autocomplete({
-            input: artistCountry,
-            debounceTime: 0,
-            maxVisibleItems: 8,
-            // With a country picked, the box holds its full name, so show them all to choose another
-            search: async (q) => artistCountryCode.value ? countries.ALL : countries.startingWith(q),
-            renderItem: renderCountryOption,
-            onSelected(country) {
-                setCountry(country.code);
-                unlinkIfContradictingMusicBrainz();
-            }
-        });
-
-        artistCountryToggle.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (countryAutocomplete.isOpen)
-                countryAutocomplete.hide();
-            else
-                countryAutocomplete.open();
-        });
-
-        // Typing means no country is picked until one is chosen from the filtered list
-        artistCountry.addEventListener("input", () => {
-            artistCountryCode.value = "";
-            updateCountryFlag();
-            setConfirmButtonStatus();
-        });
-
-        // Typing a country's full name counts as picking it
-        artistCountry.addEventListener("blur", () => {
-            if (artistCountryCode.value)
-                return;
-            const match = countries.byName(artistCountry.value);
-            if (match) {
-                setCountry(match.code);
-                unlinkIfContradictingMusicBrainz();
-            }
-        });
 
         // A pasted URL says which artist this is, so it's looked up and fills in the form like picking
         // that artist would. Nothing is linked until MusicBrainz has confirmed it knows them.
@@ -585,7 +503,7 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
                 setMusicBrainzId(linkedMbid, toMusicBrainzValues(artist));
                 if (!artistType.value)
                     setType(artist.type ?? "Other");
-                if (!artistCountryCode.value)
+                if (!countryPicker.getCode())
                     setCountry(artist.country);
                 unlinkIfContradictingMusicBrainz();
             }
@@ -691,7 +609,7 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
 
         // Confirm button enable/disable. A name of only spaces is no name.
         function isComplete() {
-            return artistName.value.trim().length > 0 && artistType.value.length > 0 && artistCountryCode.value.length > 0;
+            return artistName.value.trim().length > 0 && artistType.value.length > 0 && countryPicker.getCode().length > 0;
         }
 
         // True while the artist is being saved, so that a second click can't add them twice
@@ -759,7 +677,7 @@ export function show(initialName = "", { musicBrainzId = null, creatorType = nul
                 name: artistName.value.trim(),
                 sortName: null,     // The backend gets it from MusicBrainz
                 type: artistType.value,
-                country: artistCountryCode.value,
+                country: countryPicker.getCode(),
                 musicBrainzId,
                 spotifyUrl: artistSpotifyUrl.value || null,
                 image
