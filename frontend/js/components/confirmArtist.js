@@ -1,23 +1,82 @@
+import * as styles from "../styles.js"
 import * as Modal from "./modal.js";
-import * as styles from "../styles.js";
+import * as mediaIcons from "./common/mediaIcons.js";
+import { createFlagElement } from "./common/countryFlag.js";
 
-/**
- * Shows a dialog for resolving one or more artist names against possible
- * existing-artist matches from the backend. Stacks on top of whatever
- * modal is currently open (e.g. the Add Record form), rather than
- * replacing it. Cancel simply closes the dialog
- *
- * @param {Object<string, Array<{id: string|number, name: string, thumbnail: string}>>} matches
- *   Keyed by the artist name as entered by the user. Each value is the
- *   backend's list of candidate matches for that name. An empty array
- *   means that there was no match.
- *
- * @returns {Promise<null | Object<string, {type: "existing", id, name} | {type: "new", name}>>}
- *   Resolves to `null` if the user cancels. Otherwise, it resolves to an
- *   object keyed by the same artist names, where each value records what
- *   the user chose for it.
- */
-export function confirm(matches) {
+// Lets the user pick one of several MusicBrainz artists sharing a name (e.g. "Prince").
+// Artists are as returned by musicbrainz.findArtists().
+//
+//   const artist = await confirmArtist.choose(artists, "Prince");    // the chosen artist, or null if skipped
+
+function describeArtist(artist) {
+    return {
+        heading: artist.name?.trim() || "Name missing",
+        typeName: artist.type?.trim() ?? "",
+        note: artist.disambiguation?.trim() ?? ""
+    };
+}
+
+// number is the option's position in the list, starting at 1
+function createArtistButton(artist, number, onChosen) {
+    const { heading, typeName, note } = describeArtist(artist);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `w-full text-left px-4 py-3 rounded-lg border
+                        flex items-center gap-3
+                        border-slate-200 dark:border-slate-700
+                        hover:bg-slate-100 dark:hover:bg-slate-700
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+                        transition-colors`;
+
+    // Number on the left, then the text, and the type icon (if any) on the right spanning all lines
+    const numberElement = document.createElement("span");
+    numberElement.className = "shrink-0 min-w-6 text-right font-medium tabular-nums text-slate-400 dark:text-slate-500";
+    numberElement.textContent = `${number}.`;
+    button.append(numberElement);
+
+    const text = document.createElement("div");
+    text.className = "min-w-0 flex-1";
+    button.append(text);
+
+    const icon = mediaIcons.forCreatorType(typeName);
+    if (icon) {
+        const iconElement = document.createElement("div");
+        iconElement.className = "shrink-0 text-slate-400 dark:text-slate-500";
+        iconElement.title = typeName;
+        iconElement.setAttribute("role", "img");
+        iconElement.setAttribute("aria-label", typeName);
+        iconElement.innerHTML = mediaIcons.svg(icon, "h-10 w-10");
+        button.append(iconElement);
+    }
+
+    // The flag goes before the name. The type is shown only by the icon (and its tooltip).
+    const headingElement = document.createElement("div");
+    headingElement.className = "font-medium";
+    const flagElement = createFlagElement(artist.country);
+    if (flagElement)
+        headingElement.append(flagElement);
+    headingElement.append(heading);
+    text.append(headingElement);
+
+    if (note) {
+        const noteElement = document.createElement("div");
+        noteElement.className = "text-sm text-slate-500 dark:text-slate-400";
+        noteElement.append("Details: ");
+
+        const noteText = document.createElement("span");
+        noteText.className = "italic";
+        noteText.textContent = note;
+        noteElement.append(noteText);
+
+        text.append(noteElement);
+    }
+
+    button.addEventListener("click", () => onChosen(artist));
+    return button;
+}
+
+export function choose(artists, name) {
     return new Promise(resolve => {
         let resolved = false;
         function resolveOnce(value) {
@@ -27,164 +86,47 @@ export function confirm(matches) {
             resolve(value);
         }
 
-        const artistNames = Object.keys(matches);
-        const selections = new Map(); // index -> { type: "existing", id, name } | { type: "new", name }
-
         const root = document.createElement("div");
-        root.innerHTML = `
-        <p class="text-sm
-                  text-slate-500
-                  dark:text-slate-400
-                  mb-4">
-            We found some possible existing matches. Pick the right artist
-            for each name below, or add it as new.
-        </p>
-        <div id="artistRows"
-             class="max-h-72
-                    overflow-y-auto
-                    space-y-3
-                    pr-1"></div>
-        `;
+        root.className = "flex flex-col gap-4";
 
-        const rowsContainer = root.querySelector("#artistRows");
+        const intro = document.createElement("p");
+        intro.className = "text-slate-600 dark:text-slate-300";
+        intro.textContent = artists.length === 1
+            ? `MusicBrainz has an artist called "${name}". Is it the one you mean?`
+            : `MusicBrainz has ${artists.length} artists called "${name}". Which one do you mean?`;
+        root.append(intro);
 
-        artistNames.forEach((name, index) => {
-            const options = matches[name] ?? [];
-            const groupName = `artist-row-${index}`;
+        const list = document.createElement("div");
+        list.className = "flex flex-col gap-2 max-h-[50vh] overflow-y-auto";
+        root.append(list);
 
-            const row = document.createElement("div");
-            row.className = "border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2";
-            row.innerHTML = `
-                <div class="font-medium
-                            text-sm
-                            text-slate-900
-                            dark:text-slate-100">"${name}"</div>
-                <div class="space-y-1"></div>
-            `;
-
-            const optionsContainer = row.querySelector(".space-y-1");
-
-            function addOption({ value, thumbnail, label, isNew = false }) {
-                const optionLabel = document.createElement("label");
-                optionLabel.className = `
-                    flex
-                    items-center
-                    gap-3
-                    p-2
-                    rounded-md
-                    cursor-pointer
-                    border
-                    border-transparent
-                    hover:bg-slate-50
-                    dark:hover:bg-slate-700/50
-                    transition-colors
-                `;
-
-                optionLabel.innerHTML = `
-                    <input type="radio"
-                           name="${groupName}"
-                           value="${value}"class="sr-only">
-                    ${isNew
-                        ? `<div class="w-8
-                                       h-8
-                                       rounded-full
-                                       shrink-0
-                                       bg-slate-100
-                                       dark:bg-slate-800
-                                       flex
-                                       items-center
-                                       justify-center
-                                       text-slate-400
-                                       text-lg">+</div>`
-                        : `<img src="${thumbnail}" 
-                                class="w-8
-                                       h-8
-                                       rounded-full
-                                       object-cover
-                                       shrink-0"
-                                       alt="">`
-                    }
-                    <span class="text-sm">${label}</span>
-                `;
-
-                optionLabel.querySelector("input").addEventListener("change", () => {
-                    selections.set(index, isNew
-                        ? { type: "new", name }
-                        : { type: "existing", id: value, name: label });
-                    updateConfirmButtonState();
-                    optionsContainer.querySelectorAll("label").forEach(x => {
-                        const isSelected = x.querySelector("input").checked;
-                        x.classList.toggle("bg-indigo-50", isSelected);
-                        x.classList.toggle("dark:bg-indigo-900/30", isSelected);
-                        x.classList.toggle("border-indigo-400", isSelected);
-                        x.classList.toggle("dark:border-indigo-400", isSelected);
-                    });
-
-                });
-
-                optionsContainer.appendChild(optionLabel);
-            }
-
-            for (const match of options) {
-                addOption({ value: match.id, thumbnail: match.thumbnail, label: match.name });
-            }
-
-            // We can always add the artist as a new artist
-            addOption({ value: "new", label: `Add "${name}" as a new artist`, isNew: true });
-
-            rowsContainer.appendChild(row);
-        });
-
-        function updateConfirmButtonState() {
-            const allResolved = selections.size === artistNames.length;
-            confirmButton.disabled = !allResolved;
-            confirmButton.classList.toggle("opacity-50", !allResolved);
-            confirmButton.classList.toggle("cursor-not-allowed", !allResolved);
+        let modal = null;
+        for (const [index, artist] of artists.entries()) {
+            list.append(createArtistButton(artist, index + 1, chosen => {
+                resolveOnce(chosen);
+                modal.close();
+            }));
         }
 
-        function buildResolvedMap() {
-            const result = {};
-            artistNames.forEach((name, index) => {
-                result[name] = selections.get(index);
-            });
-            return result;
-        }
-
-        const modalHandle = Modal.show({
-            title: "Confirm artists",
+        modal = Modal.show({
+            title: "Choose artist",
             content: root,
-            maxWidthClass: "max-w-lg",
+            maxWidthClass: "max-w-xl",
             buttons: [
                 {
-                    type: "cancel",
-                    action: () => {
+                    "text": "Skip",
+                    "className": styles.buttonSecondary,
+                    "action": () => {
                         resolveOnce(null);
                         return true;
                     }
-                },
-                {
-                    text: "Confirm",
-                    className: styles.buttonPrimary,
-                    action: () => {
-                        resolveOnce(buildResolvedMap());
-                        return true;
-                    }
                 }
-            ]
+            ],
+            showCloseIcon: false,
+            closeOnClickOutside: false,
+            closeOnEscape: false
         });
 
-        // Escape, clicking outside the dialog, and the header's (x) button
-        // all bypass the button actions above and call modal.close()
-        // directly. Without patching the close function here, we would never
-        // resolve the Promise and hence, bnever return if the user cancels
-        // via any other method than pressing the "Cancel" button.
-        const originalClose = modalHandle.close;
-        modalHandle.close = () => {
-            resolveOnce(null);
-            originalClose();
-        };
-
-        const confirmButton = modalHandle.dialog.querySelectorAll("#modalFooter button")[1];
-        updateConfirmButtonState();
+        list.querySelector("button")?.focus();
     });
 }
