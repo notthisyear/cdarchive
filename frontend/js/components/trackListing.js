@@ -5,6 +5,14 @@ let nextTrackId = 0;
 const tracksMap = new Map();
 const NEW_TRACK_PLACEHOLDER_NAME = "&lt;New Track&gt;"
 
+// Fired on the track list when the user adds, edits or removes a track (but not when tracks are
+// added from code with addTrackRow() or cleared), so the form can tell its tracks were edited by hand.
+export const TRACKS_EDITED_EVENT = "tracks-edited";
+
+function notifyTracksEdited(trackList) {
+    trackList.dispatchEvent(new CustomEvent(TRACKS_EDITED_EVENT));
+}
+
 function noTracksContent() {
     const div = document.createElement("div");
     div.className = `rounded-lg
@@ -129,8 +137,16 @@ function createTrackRowWithId(trackList, trackId, title, discNumber, trackNumber
                 const hadMultipleDiscsBefore = hasMultipleDiscs();
                 const newRow = createTrackRow(trackList, newTitle, newDiscNumber, newTrackNumber, newDuration);
                 updateTrackRow(trackList, trackId, row, newRow, hadMultipleDiscsBefore);
+
+                const changed = newTitle !== title || newDiscNumber !== discNumber
+                    || newTrackNumber !== trackNumber || newDuration !== durationSeconds;
+                if (changed)
+                    notifyTracksEdited(trackList);
             },
-            () => { removeTrackRow(trackList, trackId, row); });
+            () => {
+                removeTrackRow(trackList, trackId, row);
+                notifyTracksEdited(trackList);
+            });
     });
     return row;
 }
@@ -154,6 +170,7 @@ export function addTrackRow(trackList, title, discNumber, trackNumber, durationS
 
 export function addEmptyTrackRow(trackList) {
     addTrackRow(trackList, NEW_TRACK_PLACEHOLDER_NAME, Math.max(1, getDiscCount()), getTrackCount() + 1, 0);
+    notifyTracksEdited(trackList);
 }
 
 export function clearAllTracks(trackList) {

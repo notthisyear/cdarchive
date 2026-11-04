@@ -7,10 +7,10 @@ export function create(trackTitle, trackNumber, trackDurationSeconds) {
     row.innerHTML = `
         <div class="flex items-center gap-4">
             <span class="w-3 text-slate-500">
-                ${trackNumber}.
+                ${util.escapeHtml(trackNumber)}.
             </span>
             <span>
-                ${trackTitle}
+                ${util.escapeHtml(trackTitle)}
             </span>
         </div>
 

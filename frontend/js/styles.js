@@ -148,11 +148,6 @@ export const buttonSuccess = `
 `;
 
 export const autocompleteDropdown = `
-    absolute
-    top-full
-    left-0
-    right-0
-    mt-1
     rounded-lg
     border
     border-slate-200
@@ -162,7 +157,7 @@ export const autocompleteDropdown = `
     shadow-xl
     overflow-hidden
     hidden
-    z-50
+    z-10000
 `;
 
 export const autocompleteDropdownRow = `

@@ -2,6 +2,7 @@ import * as styles from "../styles.js";
 
 const CONTAINER_ID = "toastContainer";
 const DEFAULT_DURATION = 4000;
+const PENDING_TOAST_KEY = "pendingToast";
 
 const variants = {
     success: {
@@ -62,13 +63,15 @@ export function show({ type = "info", title, message, duration = DEFAULT_DURATIO
         ${styles.toastNotification}
     `;
 
+    // Only static, trusted markup goes through innerHTML. The title and message are
+    // caller-supplied (server errors, names from Spotify...) and are set via textContent below.
     toast.innerHTML = `
         <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${variant.iconWrapperClass}">
             ${variant.icon}
         </div>
         <div class="flex-1 min-w-0">
-            ${title ? `<div class="font-medium text-sm">${title}</div>` : ""}
-            ${message ? `<div class="text-sm text-slate-500 dark:text-slate-400">${message}</div>` : ""}
+            <div data-toast-title class="font-medium text-sm"></div>
+            <div data-toast-message class="text-sm text-slate-500 dark:text-slate-400"></div>
         </div>
         <button type="button"
                 data-toast-close
@@ -79,6 +82,18 @@ export function show({ type = "info", title, message, duration = DEFAULT_DURATIO
             </svg>
         </button>
     `;
+
+    const titleElement = toast.querySelector("[data-toast-title]");
+    if (title)
+        titleElement.textContent = title;
+    else
+        titleElement.remove();
+
+    const messageElement = toast.querySelector("[data-toast-message]");
+    if (message)
+        messageElement.textContent = message;
+    else
+        messageElement.remove();
 
     // New toasts enter at the bottom and push older ones up -- container
     // uses flex-col-reverse so appending here visually stacks upward.
@@ -124,3 +139,21 @@ export function error(message, title = "Something went wrong") {
 export function info(message, title) {
     return show({ type: "info", title, message });
 }
+
+export function showAfterReload(options) {
+    sessionStorage.setItem(PENDING_TOAST_KEY, JSON.stringify(options));
+}
+
+(function showPendingToastIfAny() {
+    const toastAsJson = sessionStorage.getItem(PENDING_TOAST_KEY);
+    if (!toastAsJson)
+        return;
+
+    sessionStorage.removeItem(PENDING_TOAST_KEY);
+
+    try {
+        show(JSON.parse(toastAsJson));
+    } catch (err) {
+        console.error("Failed to show pending toast:", err);
+    }
+})();
