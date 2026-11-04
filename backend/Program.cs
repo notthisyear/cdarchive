@@ -152,6 +152,10 @@ namespace CdArchiveBackend
             releasesEndpointGroup.AddEndpoint(new AddReleaseEndpoint());
             releasesEndpointGroup.AddEndpoint(new GetReleaseEndpoint());
             releasesEndpointGroup.AddEndpoint(new RemoveReleaseEndpoint());
+            releasesEndpointGroup.AddEndpoint(new UpdateReleaseEndpoint());
+            releasesEndpointGroup.AddEndpoint(new ReplaceTracksEndpoint());
+            releasesEndpointGroup.AddEndpoint(new SetPersonalReleaseDataEndpoint());
+            releasesEndpointGroup.AddEndpoint(new AddReleaseImageEndpoint());
             endpointGroups.Add(releasesEndpointGroup);
 
             var musicbrainzEndpointGroup = new EndpointGroupBase("/musicbrainz", useAuthorization: true);

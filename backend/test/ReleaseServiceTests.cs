@@ -132,6 +132,20 @@ namespace CdArchiveTests
             Assert.Null((await SingleReleaseAsync()).Barcode);
         }
 
+        [Theory]
+        [InlineData(" us ", "US")]
+        [InlineData("XE", "XE")]
+        [InlineData("", null)]
+        [InlineData(null, null)]
+        public async Task CountryIsStoredUpperCasedOrAsNone(string? country, string? stored)
+        {
+            var kiss = await SeedCreatorAsync();
+
+            await AddAsync(Request(credits: [Primary(kiss)]) with { Country = country });
+
+            Assert.Equal(stored, (await SingleReleaseAsync()).Country);
+        }
+
         [Fact]
         public async Task MusicBrainzIdsAreStoredLowerCased()
         {
@@ -715,7 +729,7 @@ namespace CdArchiveTests
             Assert.Equal(9, details.Score);
 
             Assert.Equal(
-                [new(simon, "Simon", CreditRole.Primary, " & ", null, null), new(garfunkel, "Garfunkel", CreditRole.Primary, "", null, null)],
+                [new(simon, "Simon", CreditRole.Primary, " & ", null, null, null, null), new(garfunkel, "Garfunkel", CreditRole.Primary, "", null, null, null, null)],
                 details.Credits);
 
             // In position order, not the order they were sent in
@@ -739,7 +753,27 @@ namespace CdArchiveTests
             var details = await GetReleaseAsync(added.ReleaseId);
 
             Assert.Equal("John Cougar", details!.Summary.ArtistName);
-            Assert.Equal(new ReleaseCredit(mellencamp, "John Mellencamp", CreditRole.Primary, "", null, "John Cougar"), Assert.Single(details.Credits));
+            Assert.Equal(new ReleaseCredit(mellencamp, "John Mellencamp", CreditRole.Primary, "", null, "John Cougar", null, null), Assert.Single(details.Credits));
+        }
+
+        // For showing their flags
+        [Fact]
+        public async Task DetailsHaveTheReleasesAndTheCreatorsCountries()
+        {
+            long kissId;
+            using (var db = _harness.CreateDbContext())
+            {
+                var kiss = new Creator { UserId = UserId, Name = "Kiss", SortName = "Kiss", Type = CreatorType.Group, Country = "US" };
+                db.Creators.Add(kiss);
+                await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+                kissId = kiss.Id;
+            }
+            var added = await AddAsync(Request(credits: [Primary(kissId)]) with { Country = "GB" });
+
+            var details = await GetReleaseAsync(added.ReleaseId);
+
+            Assert.Equal("GB", details!.Country);
+            Assert.Equal("US", Assert.Single(details.Credits).Country);
         }
 
         [Fact]
@@ -770,6 +804,340 @@ namespace CdArchiveTests
         [Fact]
         public async Task DetailsOfAReleaseThatDoesntExistAreNull()
             => Assert.Null(await GetReleaseAsync(12345));
+        #endregion
+
+        #region UpdateReleaseAsync
+        private Task<ReleaseService.UpdateReleaseResult> UpdateAsync(long releaseId, UpdateReleaseRequest request, long userId = UserId)
+            => _harness.NewRequest().Releases.UpdateReleaseAsync(userId, releaseId, request, CancellationToken.None);
+
+        // As Request() makes a release, unless told otherwise
+        private static UpdateReleaseRequest Update(IReadOnlyList<NewReleaseCredit> credits,
+                                                   string title = "Destroyer",
+                                                   string? musicBrainzReleaseId = null,
+                                                   string? musicBrainzReleaseGroupId = null,
+                                                   string? spotifyAlbumId = null,
+                                                   IReadOnlyList<ReleaseTrack>? tracks = null,
+                                                   NewImage? cover = null)
+            => new(title, ReleaseFormat.Cd, 1997, 1976, 2060, null, null, musicBrainzReleaseId, musicBrainzReleaseGroupId, spotifyAlbumId,
+                   credits, tracks, cover);
+
+        private const string SpotifyAlbumId = "0b8aKMBCIdYTalvnGiwYxN";
+
+        [Fact]
+        public async Task LinkedReleaseStayingLinkedOnlyTakesTheSpotifyAlbum()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], musicBrainzReleaseId: ReleaseMbid));
+
+            var result = await UpdateAsync(added.ReleaseId, Update([Primary(kiss)], title: "Love Gun", musicBrainzReleaseId: ReleaseMbid, spotifyAlbumId: SpotifyAlbumId));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            Assert.Equal("Destroyer", result.Release!.Summary.Title);
+            Assert.Equal(SpotifyAlbumId, result.Release.ExternalIds[ExternalSource.Spotify]);
+        }
+
+        [Fact]
+        public async Task UnlinkedReleaseTakesEverything()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+            var fingerprintBefore = (await SingleReleaseAsync()).Fingerprint;
+
+            var result = await UpdateAsync(added.ReleaseId, new UpdateReleaseRequest(
+                "  Love Gun ", ReleaseFormat.Vinyl, 2014, 1977, 2140, "602537351169", "us", null, ReleaseGroupMbid, SpotifyAlbumId,
+                [Primary(kiss, creditedName: "KISS")]));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            var release = await SingleReleaseAsync();
+            Assert.Equal(("Love Gun", ReleaseFormat.Vinyl, 2014, 1977, 2140), (release.Title, release.Format, release.ReleaseYear, release.FirstReleaseYear, release.DurationSeconds));
+            Assert.Equal(("602537351169", "US"), (release.Barcode, release.Country));
+            Assert.Equal("KISS", Assert.Single(release.Credits).CreditedName);
+            Assert.Equal(ReleaseGroupMbid, release.ExternalIds.Single(x => x.Source == ExternalSource.MusicBrainzReleaseGroup).ExternalId);
+            Assert.NotEqual(fingerprintBefore, release.Fingerprint);
+        }
+
+        [Fact]
+        public async Task UnchangedReleaseIsntTheSameAsAnother()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, (await UpdateAsync(added.ReleaseId, Update([Primary(kiss)]))).Error);
+        }
+
+        [Fact]
+        public async Task LinkingToAReleaseAnotherOneIsLinkedToIsAlreadyInTheCollection()
+        {
+            var kiss = await SeedCreatorAsync();
+            var linked = await AddAsync(Request(credits: [Primary(kiss)], musicBrainzReleaseId: ReleaseMbid));
+            var other = await AddAsync(Request(credits: [Primary(kiss)], title: "Love Gun"));
+
+            var result = await UpdateAsync(other.ReleaseId, Update([Primary(kiss)], title: "Love Gun", musicBrainzReleaseId: ReleaseMbid));
+
+            Assert.Equal((ReleaseService.UpdateReleaseError.AlreadyInCollection, linked.ReleaseId), (result.Error, result.ExistingReleaseId));
+        }
+
+        [Fact]
+        public async Task ChangingAReleaseIntoAnotherOneIsAlreadyInTheCollection()
+        {
+            var kiss = await SeedCreatorAsync();
+            var destroyer = await AddAsync(Request(credits: [Primary(kiss)]));
+            var loveGun = await AddAsync(Request(credits: [Primary(kiss)], title: "Love Gun"));
+
+            var result = await UpdateAsync(loveGun.ReleaseId, Update([Primary(kiss)], title: "Destroyer"));
+
+            Assert.Equal((ReleaseService.UpdateReleaseError.AlreadyInCollection, destroyer.ReleaseId), (result.Error, result.ExistingReleaseId));
+            Assert.Contains("Love Gun", (await GetPageAsync()).Select(x => x.Title));
+        }
+
+        [Fact]
+        public async Task UnlinkingDropsBothMusicBrainzIdsAndKeepsTheCover()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(
+                credits: [Primary(kiss)], images: [Upload(0)], musicBrainzReleaseId: ReleaseMbid, musicBrainzReleaseGroupId: ReleaseGroupMbid),
+                ServiceHarness.Files(Jpeg));
+
+            await UpdateAsync(added.ReleaseId, Update([Primary(kiss)]));
+
+            var release = await SingleReleaseAsync();
+            Assert.Empty(release.ExternalIds);
+            Assert.Single(release.Images);
+            Assert.NotNull(release.PreferredImageId);
+        }
+
+        [Fact]
+        public async Task GivenCoverReplacesTheImagesAndIsPreferred()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], images: [Upload(0)]), ServiceHarness.Files(Jpeg));
+            CoverArtArchiveHasTheCover(_harness.Http);
+            _harness.Http.Respond(CoverUrl, HttpStatusCode.OK, Png);
+
+            var result = await UpdateAsync(added.ReleaseId, Update([Primary(kiss)], musicBrainzReleaseId: ReleaseMbid, cover: Cover));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            var release = await SingleReleaseAsync();
+            var image = Assert.Single(release.Images);
+            Assert.Equal(MediaSource.CoverArtArchive, image.MediaFile.Source);
+            Assert.Equal(image.MediaFileId, release.PreferredImageId);
+        }
+
+        [Fact]
+        public async Task TracksAreReplacedWhenGivenAndKeptWhenNot()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], tracks: [new(1, 1, "Detroit Rock City", 318), new(1, 2, "King of the Night Time World", 199)]));
+
+            await UpdateAsync(added.ReleaseId, Update([Primary(kiss)], title: "Destroyer (Remastered)"));
+            Assert.Equal(2, (await SingleReleaseAsync()).Tracks.Count);
+
+            await UpdateAsync(added.ReleaseId, Update([Primary(kiss)], tracks: [new(1, 1, "Detroit Rock City", 318)]));
+            Assert.Equal("Detroit Rock City", Assert.Single((await SingleReleaseAsync()).Tracks).Title);
+        }
+
+        [Fact]
+        public async Task CreditsAreReplacedInBillingOrder()
+        {
+            var simon = await SeedCreatorAsync(name: "Simon");
+            var garfunkel = await SeedCreatorAsync(name: "Garfunkel");
+            var added = await AddAsync(Request(credits: [Primary(simon)]));
+
+            await UpdateAsync(added.ReleaseId, Update([Primary(garfunkel, " & "), Primary(simon, creditedName: "Simon")]));
+
+            var credits = (await SingleReleaseAsync()).Credits.OrderBy(x => x.SortOrder).ToList();
+            Assert.Equal([(garfunkel, " & ", (string?)null), (simon, "", null)], credits.Select(x => (x.CreatorId, x.JoinPhrase, x.CreditedName)));
+        }
+
+        [Fact]
+        public async Task UpdateCreditingAnUnknownCreatorChangesNothing()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+
+            var result = await UpdateAsync(added.ReleaseId, Update([Primary(12345)], title: "Love Gun"));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.UnknownCreator, result.Error);
+            Assert.Equal("Destroyer", (await SingleReleaseAsync()).Title);
+        }
+
+        [Fact]
+        public async Task AnotherUsersReleaseIsntUpdated()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+            var releaseId = await AddReleaseAsync(theirs, "Destroyer", userId: OtherUserId);
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.NotFound, (await UpdateAsync(releaseId, Update([Primary(theirs)], title: "Mine"))).Error);
+        }
+        #endregion
+
+        #region ReplaceTracksAsync
+        private Task<ReleaseService.UpdateReleaseResult> ReplaceTracksAsync(long releaseId, IReadOnlyList<ReleaseTrack> tracks, long userId = UserId)
+            => _harness.NewRequest().Releases.ReplaceTracksAsync(userId, releaseId, tracks, CancellationToken.None);
+
+        [Fact]
+        public async Task ReplacedTracksMakeUpTheLength()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], tracks: [new(1, 1, "Detroit Rock City", 318)]));
+
+            var result = await ReplaceTracksAsync(added.ReleaseId, [new(1, 1, "Detroit Rock City", 318), new(1, 2, "Shout It Out Loud", null), new(1, 3, "Beth", 165)]);
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            Assert.Equal(3, result.Release!.Tracks.Count);
+            Assert.Equal(483, result.Release.DurationSeconds);
+        }
+
+        // Another track list is another release than the one on MusicBrainz, but still the same album
+        [Fact]
+        public async Task LinkedReleaseLosesItsLinkButNotItsReleaseGroup()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], musicBrainzReleaseId: ReleaseMbid, musicBrainzReleaseGroupId: ReleaseGroupMbid));
+
+            var result = await ReplaceTracksAsync(added.ReleaseId, [new(1, 1, "Beth", 165)]);
+
+            Assert.False(result.Release!.ExternalIds.ContainsKey(ExternalSource.MusicBrainz));
+            Assert.Equal(ReleaseGroupMbid, result.Release.ExternalIds[ExternalSource.MusicBrainzReleaseGroup]);
+        }
+
+        [Fact]
+        public async Task TracksMakingTheReleaseTheSameAsAnotherArentSaved()
+        {
+            var kiss = await SeedCreatorAsync();
+            var withBeth = await AddAsync(Request(credits: [Primary(kiss)], tracks: [new(1, 1, "Beth", 165)]) with { DurationSeconds = 165 });
+            var withoutTracks = await AddAsync(Request(credits: [Primary(kiss)]) with { DurationSeconds = 165 });
+
+            var result = await ReplaceTracksAsync(withoutTracks.ReleaseId, [new(1, 1, "Beth", 165)]);
+
+            Assert.Equal((ReleaseService.UpdateReleaseError.AlreadyInCollection, withBeth.ReleaseId), (result.Error, result.ExistingReleaseId));
+            using var db = _harness.CreateDbContext();
+            Assert.Single(await db.Set<Track>().ToListAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task AnotherUsersTracksArentReplaced()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+            var releaseId = await AddReleaseAsync(theirs, "Destroyer", userId: OtherUserId);
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.NotFound, (await ReplaceTracksAsync(releaseId, [new(1, 1, "Beth", 165)])).Error);
+        }
+        #endregion
+
+        #region SetPersonalDataAsync
+        private Task<ReleaseService.UpdateReleaseResult> SetPersonalDataAsync(long releaseId, PersonalReleaseData data, long userId = UserId)
+            => _harness.NewRequest().Releases.SetPersonalDataAsync(userId, releaseId, data, CancellationToken.None);
+
+        [Fact]
+        public async Task PersonalDataIsStored()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+
+            var result = await SetPersonalDataAsync(added.ReleaseId, new(new DateOnly(1999, 4, 1), 7, true, "  Bought at a flea market  "));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            Assert.Equal((new DateOnly(1999, 4, 1), 7, true, "Bought at a flea market"),
+                (result.Release!.AcquiredOn, result.Release.Score, result.Release.Consumed, result.Release.Notes));
+        }
+
+        [Fact]
+        public async Task PersonalDataNotGivenIsCleared()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], score: 8));
+            await SetPersonalDataAsync(added.ReleaseId, new(new DateOnly(1999, 4, 1), 7, true, "Notes"));
+
+            await SetPersonalDataAsync(added.ReleaseId, new(null, null, false, "   "));
+
+            var release = await SingleReleaseAsync();
+            Assert.Equal(((DateOnly?)null, (int?)null, false, (string?)null), (release.AcquiredOn, release.Score, release.Consumed, release.Notes));
+        }
+
+        // None of it is part of what the release is
+        [Fact]
+        public async Task PersonalDataKeepsTheMusicBrainzLinkAndFingerprint()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)], musicBrainzReleaseId: ReleaseMbid));
+            var fingerprint = (await SingleReleaseAsync()).Fingerprint;
+
+            await SetPersonalDataAsync(added.ReleaseId, new(null, 10, true, "Great"));
+
+            var release = await SingleReleaseAsync();
+            Assert.Equal(fingerprint, release.Fingerprint);
+            Assert.Contains(release.ExternalIds, x => x.Source == ExternalSource.MusicBrainz);
+        }
+
+        [Fact]
+        public async Task AnotherUsersPersonalDataIsntSet()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+            var releaseId = await AddReleaseAsync(theirs, "Destroyer", userId: OtherUserId);
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.NotFound, (await SetPersonalDataAsync(releaseId, new(null, 5, true, null))).Error);
+        }
+        #endregion
+
+        #region AddUploadedImageAsync
+        private Task<ReleaseService.UpdateReleaseResult> AddImageAsync(long releaseId, IFormFileCollection files, long userId = UserId)
+            => _harness.NewRequest().Releases.AddUploadedImageAsync(userId, releaseId, files, CancellationToken.None);
+
+        // The original stays for other users' copies of the release, and in this one's images
+        [Fact]
+        public async Task UploadedImageIsTheUsersOwnAndShownWhileTheOthersStay()
+        {
+            var kiss = await SeedCreatorAsync();
+            CoverArtArchiveHasTheCover(_harness.Http);
+            _harness.Http.Respond(CoverUrl, HttpStatusCode.OK, Jpeg);
+            var added = await AddAsync(Request(credits: [Primary(kiss)], images: [Cover]));
+
+            var result = await AddImageAsync(added.ReleaseId, ServiceHarness.Files(Png));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.None, result.Error);
+            var release = await SingleReleaseAsync();
+            Assert.Equal(2, release.Images.Count);
+            var upload = release.Images.Single(x => x.MediaFile.Source == MediaSource.Upload).MediaFile;
+            Assert.Equal(UserId, upload.OwnerUserId);
+            Assert.Equal(upload.Id, release.PreferredImageId);
+            Assert.StartsWith($"/api/uploads/{upload.Id}?", result.Release!.Summary.ImageUrl);
+        }
+
+        [Fact]
+        public async Task SameImageUploadedTwiceIsStoredOnce()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+
+            await AddImageAsync(added.ReleaseId, ServiceHarness.Files(Png));
+            await AddImageAsync(added.ReleaseId, ServiceHarness.Files(Png));
+
+            Assert.Single((await SingleReleaseAsync()).Images);
+            Assert.Single(await _harness.CreateDbContext().MediaFiles.ToListAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task UploadThatIsntAnImageIsInvalid()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(credits: [Primary(kiss)]));
+
+            var result = await AddImageAsync(added.ReleaseId, ServiceHarness.Files([1, 2, 3, 4]));
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.InvalidImage, result.Error);
+            Assert.Empty((await SingleReleaseAsync()).Images);
+        }
+
+        [Fact]
+        public async Task ImageCantBeAddedToAnotherUsersRelease()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+            var releaseId = await AddReleaseAsync(theirs, "Destroyer", userId: OtherUserId);
+
+            Assert.Equal(ReleaseService.UpdateReleaseError.NotFound, (await AddImageAsync(releaseId, ServiceHarness.Files(Png))).Error);
+            Assert.Empty(_harness.FileSystem.Files);
+        }
         #endregion
 
         #region RemoveReleaseAsync

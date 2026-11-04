@@ -46,6 +46,21 @@ namespace CdArchiveTests
             => Assert.False(Request(durationSeconds: -1).Validate(0));
 
         [Theory]
+        [InlineData("SE")]
+        [InlineData("xw")]
+        [InlineData("")]
+        [InlineData(null)]
+        public void TwoLetterCountryOrNoneIsValid(string? country)
+            => Assert.True((Request() with { Country = country }).Validate(0));
+
+        [Theory]
+        [InlineData("SWE")]
+        [InlineData("S")]
+        [InlineData("S1")]
+        public void OtherCountryIsInvalid(string country)
+            => Assert.False((Request() with { Country = country }).Validate(0));
+
+        [Theory]
         [InlineData(Release.MinScore)]
         [InlineData(Release.MaxScore)]
         [InlineData(null)]
@@ -83,6 +98,49 @@ namespace CdArchiveTests
         [Fact]
         public void WithoutAPrimaryCreditIsInvalid()
             => Assert.False(Request(credits: [new(1, CreditRole.Producer, "", null)]).Validate(0));
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData(Release.MinScore)]
+        [InlineData(Release.MaxScore)]
+        public void PersonalDataWithARatingInRangeOrNoneIsValid(int? score)
+            => Assert.True(new PersonalReleaseData(null, score, false, null).Validate());
+
+        [Theory]
+        [InlineData(Release.MinScore - 1)]
+        [InlineData(Release.MaxScore + 1)]
+        public void PersonalDataWithARatingOutOfRangeIsInvalid(int score)
+            => Assert.False(new PersonalReleaseData(null, score, false, null).Validate());
+
+        [Fact]
+        public void PersonalDataWithTooLongNotesIsInvalid()
+            => Assert.False(new PersonalReleaseData(null, null, false, new string('a', 4001)).Validate());
+
+        // UpdateReleaseRequest follows the same rules
+        private static UpdateReleaseRequest Update(int? releaseYear = 1997, int? firstReleaseYear = 1976, NewImage? cover = null, IReadOnlyList<ReleaseTrack>? tracks = null)
+            => new("Destroyer", ReleaseFormat.Cd, releaseYear, firstReleaseYear, 2060, null, null, null, null, null,
+                   [new(1, CreditRole.Primary, "", null)], tracks, cover);
+
+        [Fact]
+        public void MinimalUpdateIsValid()
+            => Assert.True(Update().Validate());
+
+        [Fact]
+        public void UpdateFirstReleasedAfterThisReleaseIsInvalid()
+            => Assert.False(Update(releaseYear: 1976, firstReleaseYear: 1997).Validate());
+
+        [Fact]
+        public void UpdateWithALookedUpCoverIsValid()
+            => Assert.True(Update(cover: new(MediaSource.CoverArtArchive, Mbid, null)).Validate());
+
+        // Nothing is uploaded with an update
+        [Fact]
+        public void UpdateWithAnUploadedCoverIsInvalid()
+            => Assert.False(Update(cover: new(MediaSource.Upload, null, 0)).Validate());
+
+        [Fact]
+        public void UpdateWithTwoTracksInOnePositionIsInvalid()
+            => Assert.False(Update(tracks: [new(1, 1, "Beth", 165), new(1, 1, "Detroit Rock City", 318)]).Validate());
 
         [Fact]
         public void CreditedNameAsLongAsACreatorsNameIsValid()

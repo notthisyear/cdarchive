@@ -66,6 +66,10 @@ namespace CdArchiveBackend.Data.Database
 
         public string? Barcode { get; set; }
 
+        // Where this release came out, as MusicBrainz says: ISO 3166-1 alpha-2, or its own XE
+        // (Europe) and XW (worldwide). Null if unknown.
+        public string? Country { get; set; }
+
         // See ReleaseFingerprint. For telling whether the user already has a release without a
         // MusicBrainz id. Has to be computed again whenever what goes into it changes.
         public required string Fingerprint { get; set; }
@@ -76,6 +80,9 @@ namespace CdArchiveBackend.Data.Database
         public int? Score { get; set; }
 
         public DateOnly? AcquiredOn { get; set; }
+
+        // Whether the user has listened to it (a record), read it (a book) or watched it (a film)
+        public bool Consumed { get; set; }
 
         public DateTimeOffset CreatedAt { get; set; }
 

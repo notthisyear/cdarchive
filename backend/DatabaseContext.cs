@@ -139,6 +139,7 @@ namespace CdArchiveBackend
                 entity.Property(x => x.Format).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
                 entity.Property(x => x.Barcode).HasMaxLength(32);
+                entity.Property(x => x.Country).HasMaxLength(2);
                 entity.Property(x => x.Fingerprint).HasMaxLength(64).IsRequired();
                 entity.Property(x => x.Notes).HasMaxLength(4000);
                 entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
