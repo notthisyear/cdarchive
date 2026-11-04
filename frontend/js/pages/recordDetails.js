@@ -2,6 +2,7 @@ import * as backendApi from "../api/backend.js";
 import * as util from "../util.js"
 import * as styles from "../styles.js";
 import * as trackListing from "../components/trackListing.js"
+import { createCoverImage } from "../components/common/coverImage.js";
 
 export async function render(params) {
     // ReleaseDetails (see backendApi.getRelease)
@@ -16,13 +17,7 @@ export async function render(params) {
             
             <!-- Left side -->
             <div class="space-y-6">
-                <img id="recordCover"
-                     class="
-                        w-full
-                        rounded-xl
-                        shadow-2xl
-                        object-cover
-                    ">
+                <div id="recordCover"></div>
 
                 <div class="${styles.recordSummary}">
 
@@ -108,16 +103,13 @@ export async function render(params) {
     root.querySelector("#recordArtist").textContent = record.summary.artistName;
 
     // Without a cover, an empty square instead of a broken image
-    const cover = root.querySelector("#recordCover");
-    const coverSrc = backendApi.toImageSrc(record.summary.imageUrl);
-    if (coverSrc) {
-        cover.src = coverSrc;
-        cover.alt = record.summary.title;
-    }
-    else {
-        cover.alt = "";
-        cover.classList.add("aspect-square", "bg-slate-200", "dark:bg-slate-700");
-    }
+    // Without a cover, a square box saying so, as wide as a cover would be
+    root.querySelector("#recordCover").replaceWith(createCoverImage({
+        src: backendApi.toImageSrc(record.summary.imageUrl),
+        alt: record.summary.title,
+        className: "w-full rounded-xl shadow-2xl",
+        placeholderClassName: "aspect-square text-lg bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+    }));
 
     const editRecordSummary = root.querySelector("#editRecordSummary");
     editRecordSummary.addEventListener("click", () => {
