@@ -1,9 +1,9 @@
 import * as auth from "../auth.js";
-import * as api from "../api.js";
+import * as spotifyApi from "../api/spotify.js";
 import * as router from "../router.js";
 import * as styles from "../styles.js";
 
-import * as addRecordForm from "./addRecordForm.js";
+import * as addReleaseDialog from "./addReleaseDialog.js";
 import * as spotifyStatus from "./spotifyStatus.js";
 
 export async function create() {
@@ -45,11 +45,10 @@ export async function create() {
         event.preventDefault();
         auth.logout();
         router.navigate("/")
-        // TODO: Some sort of "Are you sure" when editing/adding a record
     });
 
     nav.querySelector("button[id = addRecordButton]").addEventListener("click", async () => {
-        addRecordForm.show();
+        await addReleaseDialog.show();
     });
 
     const widget = spotifyStatus.mount(nav.querySelector("div[id = spotifyStatusIndicator]"),
@@ -63,8 +62,14 @@ export async function create() {
         });
 
     if (auth.hasSpotifyToken()) {
-        const name = await api.getSpotifyDisplayName();
-        widget.setConnected(name);
+        // Don't let a Spotify hiccup stop the navbar (and page) from rendering
+        try {
+            const name = await spotifyApi.getSpotifyDisplayName();
+            widget.setConnected(name);
+        }
+        catch (e) {
+            console.warn("Could not get the Spotify display name:", e);
+        }
     }
     return nav;
 }
