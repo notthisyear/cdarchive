@@ -91,9 +91,9 @@ flowchart TD
 | Record form opens the dialog | [musicForm.js:487](frontend/js/components/forms/musicForm.js#L487) |
 | Creator picker opens it | [creatorPicker.js:144](frontend/js/components/creatorPicker.js#L144) |
 | The dialog itself | [addArtistForm.js:41](frontend/js/components/addArtistForm.js#L41) |
-| Starts with a known mbid, or with the Spotify search | [addArtistForm.js:866](frontend/js/components/addArtistForm.js#L866) |
+| Starts with a known mbid, or with the Spotify search | [addArtistForm.js:784](frontend/js/components/addArtistForm.js#L784) |
 | Record form keeps the chosen release if the row's mbid is unchanged, or the name is the same ignoring case | [musicForm.js:510](frontend/js/components/forms/musicForm.js#L510) |
-| Cancel asks "Discard unsaved changes?" only if the name differs from the prefilled one, an image was uploaded, or a Spotify URL is filled in | [addArtistForm.js:823](frontend/js/components/addArtistForm.js#L823) |
+| Cancel asks "Discard unsaved changes?" only if the name differs from the prefilled one, an image was uploaded, or a Spotify URL is filled in | [addArtistForm.js:741](frontend/js/components/addArtistForm.js#L741) |
 
 The record form passes no `creatorType`, so its dialog starts with no type chosen. The creator picker passes the `creatorType` its credits list was created with ("Person" by default, [creditsList.js:29](frontend/js/components/creditsList.js#L29)). That preselects the Type dropdown when it is Person, Group or Other.
 
@@ -103,20 +103,20 @@ There are four ways in. All of them end in the same image lookup.
 
 ```mermaid
 flowchart TD
-    A["A. User picks a Spotify artist<br/>onSelected :669"] --> FA["findMusicBrainzArtist :461"]
-    B["B. Opened with a known mbid<br/>(release credit) :866"] --> LK["loadKnownArtist :549"]
-    C["C. User pastes a MusicBrainz URL<br/>input listener :387"] --> LP["loadPastedArtist :513"]
+    A["A. User picks a Spotify artist<br/>onSelected :587"] --> FA["findMusicBrainzArtist :379"]
+    B["B. Opened with a known mbid<br/>(release credit) :784"] --> LK["loadKnownArtist :467"]
+    C["C. User pastes a MusicBrainz URL<br/>input listener :305"] --> LP["loadPastedArtist :431"]
     D["D. User types everything by hand"] --> M["Nothing linked;<br/>type, country, image by hand"]
 
-    FA -- "artist chosen" --> U["useMusicBrainzArtist :446<br/>name, mbid, type, country from MusicBrainz"]
+    FA -- "artist chosen" --> U["useMusicBrainzArtist :364<br/>name, mbid, type, country from MusicBrainz"]
     LP -- "MusicBrainz knows the mbid" --> U
     LK -- "takes MusicBrainz's name;<br/>fills only empty type/country" --> IMG
-    U --> IMG["loadArtistImage :603"]
+    U --> IMG["loadArtistImage :521"]
     FA -- "none found / skipped / error" --> M
     LP -- "unknown / error: nothing linked" --> M
 ```
 
-Line numbers are in [addArtistForm.js](frontend/js/components/addArtistForm.js). Lookups run one at a time ([runLookup :423](frontend/js/components/addArtistForm.js#L423)): starting one cancels the one in flight, and so does editing the name ([:855](frontend/js/components/addArtistForm.js#L855)).
+Line numbers are in [addArtistForm.js](frontend/js/components/addArtistForm.js). Lookups run one at a time ([runLookup :341](frontend/js/components/addArtistForm.js#L341)): starting one cancels the one in flight, and so does editing the name ([:773](frontend/js/components/addArtistForm.js#L773)).
 
 ### A. Spotify pick
 
@@ -161,17 +161,17 @@ sequenceDiagram
 
 | Step | Code |
 |---|---|
-| Spotify search | [addArtistForm.js:652](frontend/js/components/addArtistForm.js#L652), [spotify.js:27](frontend/js/api/spotify.js#L27) |
-| Pick handler | [addArtistForm.js:669](frontend/js/components/addArtistForm.js#L669) |
-| Spotify link first, name search as fallback | [addArtistForm.js:461](frontend/js/components/addArtistForm.js#L461) |
+| Spotify search | [addArtistForm.js:570](frontend/js/components/addArtistForm.js#L570), [spotify.js:27](frontend/js/api/spotify.js#L27) |
+| Pick handler | [addArtistForm.js:587](frontend/js/components/addArtistForm.js#L587) |
+| Spotify link first, name search as fallback | [addArtistForm.js:379](frontend/js/components/addArtistForm.js#L379) |
 | Frontend wrappers | [musicbrainz.js:117](frontend/js/api/musicbrainz.js#L117), [:103](frontend/js/api/musicbrainz.js#L103) |
 | Endpoints | [GetArtistsBySpotifyIdFromMusicBrainzEndpoint.cs:23](backend/Endpoints/MusicBrainz/GetArtistsBySpotifyIdFromMusicBrainzEndpoint.cs#L23), [GetArtistsFromMusicBrainzEndpoint.cs:21](backend/Endpoints/MusicBrainz/GetArtistsFromMusicBrainzEndpoint.cs#L21) |
 | Service | [FindArtistsBySpotifyIdAsync](backend/Services/External/MusicBrainzService.cs#L279), [SearchArtistsAsync](backend/Services/External/MusicBrainzService.cs#L231) |
 | Chooser | [confirmArtist.js:79](frontend/js/components/confirmArtist.js#L79) |
-| Filling in | [useMusicBrainzArtist](frontend/js/components/addArtistForm.js#L446) |
+| Filling in | [useMusicBrainzArtist](frontend/js/components/addArtistForm.js#L364) |
 
 More about this path:
-- **The search box is disabled until the user has logged in to Spotify** ([addArtistForm.js:687](frontend/js/components/addArtistForm.js#L687)). An expired Spotify token is refreshed before the search ([spotify.js:7](frontend/js/api/spotify.js#L7)).
+- **The search box is disabled until the user has logged in to Spotify** ([addArtistForm.js:605](frontend/js/components/addArtistForm.js#L605)). An expired Spotify token is refreshed before the search ([spotify.js:7](frontend/js/api/spotify.js#L7)).
 - **The name search finds up to 10 artists** with the Lucene query `artist:"name"`, then keeps those whose names match. Exact spellings come first, then the rest by MusicBrainz score.
 - **MusicBrainz types are mapped to ours** ([MapType](backend/Services/External/MusicBrainzService.cs#L523)): Person → Person; Group, Orchestra and Choir → Group; anything else, such as Character, → Other. With no type, the form picks "Other", because an artist must have a type to be saved.
 - **A failed lookup** shows a status line with Retry. "MusicBrainz doesn't know this artist" and Skip leave the form as it is, for the user to fill in by hand.
@@ -180,7 +180,7 @@ More about this path:
 
 Both call `GET /api/musicbrainz/artist/stream?mbid=` ([musicbrainz.js:127](frontend/js/api/musicbrainz.js#L127) → [GetArtistFromMusicBrainzEndpoint.cs:21](backend/Endpoints/MusicBrainz/GetArtistFromMusicBrainzEndpoint.cs#L21) → [GetArtistAsync](backend/Services/External/MusicBrainzService.cs#L346)).
 
-| | B. Known mbid ([loadKnownArtist](frontend/js/components/addArtistForm.js#L549)) | C. Pasted URL ([loadPastedArtist](frontend/js/components/addArtistForm.js#L513)) |
+| | B. Known mbid ([loadKnownArtist](frontend/js/components/addArtistForm.js#L467)) | C. Pasted URL ([loadPastedArtist](frontend/js/components/addArtistForm.js#L431)) |
 |---|---|---|
 | Linked while the lookup runs | Yes | No |
 | Name | MusicBrainz's, with *credited as "…" on this release* under it when the credit differs | MusicBrainz's |
@@ -218,11 +218,11 @@ stateDiagram-v2
 
 | Rule | Code |
 |---|---|
-| `setMusicBrainzId` keeps the mbid, the URL field and `musicBrainzValues` together | [addArtistForm.js:264](frontend/js/components/addArtistForm.js#L264) |
-| Unlink (and drop the looked-up image) | [:271](frontend/js/components/addArtistForm.js#L271), [:232](frontend/js/components/addArtistForm.js#L232) |
-| Contradiction check, on settled values only | [:279](frontend/js/components/addArtistForm.js#L279), called from [country picked :353](frontend/js/components/addArtistForm.js#L353), [country typed in full :375](frontend/js/components/addArtistForm.js#L375), [type changed :862](frontend/js/components/addArtistForm.js#L862) |
-| A missing MusicBrainz type arrives as `null` (not "Other") | [MapType](backend/Services/External/MusicBrainzService.cs#L523), [toMusicBrainzValues :289](frontend/js/components/addArtistForm.js#L289) |
-| Editing the name also clears the Spotify URL, linked or not, since it's another artist | [:859](frontend/js/components/addArtistForm.js#L859) |
+| `setMusicBrainzId` keeps the mbid, the URL field and `musicBrainzValues` together | [addArtistForm.js:238](frontend/js/components/addArtistForm.js#L238) |
+| Unlink (and drop the looked-up image) | [:245](frontend/js/components/addArtistForm.js#L245), [:206](frontend/js/components/addArtistForm.js#L206) |
+| Contradiction check, on settled values only | [:253](frontend/js/components/addArtistForm.js#L253), called from [country picked :294](frontend/js/components/addArtistForm.js#L294), [country typed in full :294](frontend/js/components/addArtistForm.js#L294), [type changed :780](frontend/js/components/addArtistForm.js#L780) |
+| A missing MusicBrainz type arrives as `null` (not "Other") | [MapType](backend/Services/External/MusicBrainzService.cs#L523), [toMusicBrainzValues :263](frontend/js/components/addArtistForm.js#L263) |
+| Editing the name also clears the Spotify URL, linked or not, since it's another artist | [:777](frontend/js/components/addArtistForm.js#L777) |
 
 Picking another Spotify artist goes through Unlinked: the old link, image, type and country are cleared first, and then the new artist is looked up.
 
@@ -267,7 +267,7 @@ sequenceDiagram
 
 | Step | Code |
 |---|---|
-| Frontend | [loadArtistImage](frontend/js/components/addArtistForm.js#L603), [artwork.js:21](frontend/js/api/artwork.js#L21) |
+| Frontend | [loadArtistImage](frontend/js/components/addArtistForm.js#L521), [artwork.js:21](frontend/js/api/artwork.js#L21) |
 | Endpoint | [GetArtistArtwork.cs:21](backend/Endpoints/Artwork/GetArtistArtwork.cs#L21) |
 | Wikidata entity id (shares one request with `GetArtistAsync`) | [GetWikidataEntityIdAsync](backend/Services/External/MusicBrainzService.cs#L322), [FetchArtistWithRelationsAsync](backend/Services/External/MusicBrainzService.cs#L490) |
 | Wikimedia | [GetImageAsync](backend/Services/External/WikimediaService.cs#L43), [FetchAsync](backend/Services/External/WikimediaService.cs#L65), [GetImageFileNameAsync](backend/Services/External/WikimediaService.cs#L118) |
@@ -283,7 +283,7 @@ Which photo:
 
 What happens to the photo:
 - **Only the looked-up URL is shown.** Nothing is stored until the user saves, and on save the backend fetches the photo again itself (see below).
-- **An uploaded file wins.** A lookup never replaces it, and uploading or removing an image cancels a lookup in progress ([addArtistForm.js:195](frontend/js/components/addArtistForm.js#L195)).
+- **An uploaded file wins.** A lookup never replaces it, and uploading or removing an image cancels a lookup in progress ([addArtistForm.js:169](frontend/js/components/addArtistForm.js#L169)).
 
 ## Saving
 
@@ -345,7 +345,7 @@ What the request contains:
 | `spotifyUrl` | Spotify URL field, or `null` |
 | `image` | `{ source: "Wikimedia", externalId: mbid }` for a looked-up photo of the linked artist, `{ source: "Upload", fileIndex: 0 }` for an upload, else `null` |
 
-Built in [save()](frontend/js/components/addArtistForm.js#L734) and sent by [addNewCreator](frontend/js/api/backend.js#L95). The same-name check is [findSameNamedCreator](frontend/js/components/addArtistForm.js#L718) → [findCreators](frontend/js/api/backend.js#L62) → [SearchCreatorsEndpoint.cs:23](backend/Endpoints/Creators/SearchCreatorsEndpoint.cs#L23).
+Built in [save()](frontend/js/components/addArtistForm.js#L652) and sent by [addNewCreator](frontend/js/api/backend.js#L152). The same-name check is [findSameNamedCreator](frontend/js/components/addArtistForm.js#L636) → [findCreators](frontend/js/api/backend.js#L119) → [SearchCreatorsEndpoint.cs:23](backend/Endpoints/Creators/SearchCreatorsEndpoint.cs#L23).
 
 ### The same-name check
 

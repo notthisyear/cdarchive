@@ -7,13 +7,15 @@ const SPECIAL_REGIONS = {
     XE: "eu"    // Europe
 };
 
-// An element showing the country's flag, or null if the code isn't one we can show.
-export function createFlagElement(code) {
+// An element showing the country's flag, or null if the code isn't one we can show. It goes in
+// front of a name, or with { trailing: true } after it (spaced and falling back to text to suit).
+export function createFlagElement(code, { trailing = false } = {}) {
     const upper = code?.trim().toUpperCase() ?? "";
+    const margin = trailing ? "ml-1.5" : "mr-1.5";
 
     if (upper === WORLDWIDE) {
         const globe = document.createElement("span");
-        globe.className = "mr-1.5";
+        globe.className = margin;
         globe.textContent = "🌍";
         globe.title = "Worldwide";
         globe.setAttribute("aria-label", "Worldwide");
@@ -25,13 +27,13 @@ export function createFlagElement(code) {
         return null;
 
     const image = document.createElement("img");
-    image.className = "inline-block h-3 w-auto mr-1.5 align-baseline rounded-sm";
+    image.className = `inline-block h-3 w-auto ${margin} align-baseline rounded-sm`;
     image.src = `${FLAG_URL}/h20/${flagCode}.png`;
     image.srcset = `${FLAG_URL}/h40/${flagCode}.png 2x`;
     image.alt = upper;
     image.title = upper;
     image.loading = "lazy";
     // Unknown code or flagcdn unreachable: show the code as text instead of a broken image
-    image.addEventListener("error", () => image.replaceWith(`${upper} · `), { once: true });
+    image.addEventListener("error", () => image.replaceWith(trailing ? ` (${upper})` : `${upper} · `), { once: true });
     return image;
 }

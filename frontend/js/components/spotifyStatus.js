@@ -4,8 +4,8 @@ import * as Modal from "./modal.js";
 
 const SPOTIFY_GREEN = "#1ED760";
 
-// Official Spotify glyph (circle + soundwave bars)
-function spotifyIcon({ colorClass = "", style = "" } = {}) {
+// Official Spotify glyph (circle + soundwave bars). Also used for links to Spotify elsewhere.
+export function spotifyIcon({ colorClass = "", style = "" } = {}) {
     return `
         <svg class="w-5 h-5 ${colorClass} transition-colors shrink-0"
              style="${style}"

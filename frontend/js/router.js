@@ -99,6 +99,11 @@ export async function navigate(url) {
     await renderCurrentRoute();
 }
 
+// Draws the current page again, e.g. after its data changed. The history stays as it is.
+export async function refresh() {
+    await renderCurrentRoute();
+}
+
 async function renderCurrentRoute() {
     const route = getCurrentRoute();
     console.log(route)
