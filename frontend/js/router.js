@@ -4,7 +4,7 @@ import * as recordDetails from "./pages/recordDetails.js";
 
 import * as navbar from "./components/navbar.js";
 
-import * as api from "./api.js";
+import * as backendApi from "./api/backend.js";
 import * as auth from "./auth.js";
 
 const routes = [
@@ -19,7 +19,7 @@ const routes = [
         requiresAuth: false
     },
     {
-        path: "/records/:id",
+        path: "/releases/:id",
         page: recordDetails,
         requiresAuth: true
     }
@@ -53,32 +53,44 @@ function installLinkHandler() {
 async function checkAuthenticationStatus() {
     if (auth.isLoggedIn()) {
         try {
-            const _ = await api.getRecordsSummary(0, 0);
+            const _ = await backendApi.getTotalNumberOfReleases();
         }
         catch (e) {
-            // The user is already logged out if the return was 401, but
-            // we log out anyway just to be sure
+            // fetchFromUrl already logs out on 401. Anything else (backend down,
+            // network error...) shouldn't throw away a token that may be fine.
             console.log(e);
-            auth.logout();
         }
     }
 
-    // If the URL has a "code" search parameter, we got redirected from Spotify's
+    // If the URL has a "code" or "error" search parameter, we got redirected from Spotify's
     // authorization flow, so let's go fetch a token
     const args = new URLSearchParams(window.location.search);
     const code = args.get("code");
-    if (code) {
-        console.log("acquiring tokens");
-        await auth.acquireSpotifyTokens(code);
+    const error = args.get("error");
+    if (code || error) {
+        if (error) {
+            console.warn(`Spotify authorization failed: ${error}`);
+        }
+        else {
+            console.log("acquiring tokens");
+            try {
+                await auth.acquireSpotifyTokens(code);
+            }
+            catch (e) {
+                console.warn("Could not get Spotify tokens:", e);
+            }
+        }
 
-        // Now, we can reload the page without the "code" search parameter
+        // Now, we can reload the page without the search parameters Spotify added
         const url = new URL(window.location.href);
         url.searchParams.delete("code");
-        const updatedUrl = url.search ? url.href : url.href.replace('?', '');
-        window.history.replaceState({}, document.title, updatedUrl);
+        url.searchParams.delete("error");
+        url.searchParams.delete("state");
+        window.history.replaceState({}, document.title, url.href);
     }
     else if (auth.hasSpotifyToken()) {
-        auth.verifySpotifyToken();
+        // Wait for this, or the first page render would use an expired token
+        await auth.verifySpotifyToken();
     }
 }
 
@@ -183,7 +195,12 @@ function matchPath(routePath, currentPath) {
 }
 
 function render404() {
-    const content = document.getElementById("content");
+    const app = document.getElementById("app");
+    const content = document.createElement("main");
+    content.id = "content";
+    content.className = "max-w-7xl mx-auto p-6";
+    app.replaceChildren(content);
+
     content.innerHTML = `
         <div class="text-center mt-16">
             <h1 class="text-4xl font-bold mb-4">
