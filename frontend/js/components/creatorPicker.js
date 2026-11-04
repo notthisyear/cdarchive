@@ -13,21 +13,26 @@ import { escapeHtml } from "../util.js";
 //
 //   const picker = createCreatorPicker({ placeholder: "Search for an artist...", creatorType: "Artist", onChange });
 //   picker.element              DOM to place in a row
-//   picker.getValue()           { name, id }   (id is null until matched)
-//   picker.setValue({ name, id })
-//   picker.resolve()            async, looks up the current name and fills in the id if it clearly matches one
-//   picker.isResolved(), picker.focus(), picker.dispose()
+//   picker.getValue()           { name, id, musicBrainzId }   (id is null until matched; musicBrainzId is
+//                               the matched creator's, or null)
+//   picker.setValue({ name, id, musicBrainzId })
+//   picker.resolve({ musicBrainzId })
+//                               async, looks up the current name and fills in the id if it clearly matches
+//                               one. With a musicBrainzId (e.g. from a release's artist credit) a creator
+//                               linked to that artist counts too, and the box then shows their own name.
+//   picker.isResolved(), picker.setDisabled(disabled), picker.focus(), picker.dispose()
 //
 // Options:
-//   lookup(name) => Promise<{ creators: [{ id, name, imageUrl }], matchId }>   defaults to api.findCreators
+//   lookup(name, musicBrainzId) => Promise<{ creators: [{ id, name, imageUrl, musicBrainzId }], matchId }>
+//                                                        defaults to api.findCreators
 //   creatorType                                          passed on to the "Add new..." form
 //   required                                             browser validation on the text box
 //   onChange                                             called when validity may have changed
 
 const ADD_NEW_SENTINEL = { __addNew: true };
 
-function defaultLookup(name) {
-    return backendApi.findCreators(name);
+function defaultLookup(name, musicBrainzId = null) {
+    return backendApi.findCreators(name, musicBrainzId);
 }
 
 export function createCreatorPicker({
@@ -90,6 +95,18 @@ export function createCreatorPicker({
     const idInput = element.querySelector("[data-picker-id]");
     const toggleBtn = element.querySelector("[data-picker-toggle]");
 
+    // The MusicBrainz artist of the matched creator, if they're linked to one
+    let musicBrainzId = null;
+
+    // The MusicBrainz artist a release credits under the name in the box, from resolve(), for "Add
+    // new..." to start from. Forgotten when the user types another name.
+    let creditedMusicBrainzId = null;
+
+    function setMatch(creator) {
+        idInput.value = creator?.id != null ? String(creator.id) : "";
+        musicBrainzId = creator?.musicBrainzId ?? null;
+    }
+
     function updateStatus() {
         const resolved = idInput.value.trim().length > 0;
         element.querySelector(".status-resolved").classList.toggle("hidden", !resolved);
@@ -98,7 +115,8 @@ export function createCreatorPicker({
 
     // If the user types in the name box, whatever was matched before no longer applies
     nameInput.addEventListener("input", () => {
-        idInput.value = "";
+        setMatch(null);
+        creditedMusicBrainzId = null;
         updateStatus();
         onChange?.();
     });
@@ -119,7 +137,7 @@ export function createCreatorPicker({
                 }
 
                 // Only a creator with exactly this name counts as a match, not just the only hit
-                idInput.value = matchId ?? "";
+                setMatch(matchId == null ? null : results.find(c => String(c.id) === String(matchId)) ?? { id: matchId });
                 updateStatus();
                 onChange?.();
             }
@@ -143,15 +161,15 @@ export function createCreatorPicker({
         },
         async onSelected(item) {
             if (item.__addNew) {
-                const result = await addArtistForm.show(nameInput.value, { creatorType });
+                const result = await addArtistForm.show(nameInput.value, { creatorType, musicBrainzId: creditedMusicBrainzId });
                 if (result !== null) {
                     nameInput.value = result.name;
-                    idInput.value = result.id;
+                    setMatch(result);
                 }
             }
             else {
                 nameInput.value = item.name;
-                idInput.value = item.id;
+                setMatch(item);
             }
 
             updateStatus();
@@ -172,29 +190,52 @@ export function createCreatorPicker({
     return {
         element,
 
-        getValue: () => ({ name: nameInput.value.trim(), id: idInput.value || null }),
+        getValue: () => ({ name: nameInput.value.trim(), id: idInput.value || null, musicBrainzId: idInput.value ? musicBrainzId : null }),
 
-        setValue({ name = "", id = null } = {}) {
+        setValue({ name = "", id = null, musicBrainzId: mbid = null } = {}) {
             nameInput.value = name;
-            idInput.value = id ?? "";
+            setMatch(id == null ? null : { id, musicBrainzId: mbid });
             updateStatus();
         },
 
         isResolved: () => idInput.value !== "",
 
+        // The shared input style greys the box out while disabled
+        setDisabled(disabled) {
+            nameInput.disabled = disabled;
+            toggleBtn.disabled = disabled;
+            toggleBtn.classList.toggle("hidden", disabled);
+            if (disabled)
+                autocomplete.hide?.();
+        },
+
         focus: () => nameInput.focus(),
 
-        async resolve() {
+        async resolve({ musicBrainzId: creditedMbid = null } = {}) {
             const name = nameInput.value;
             if (name.trim() === "")
                 return;
 
+            creditedMusicBrainzId = creditedMbid;
             try {
-                const { matchId } = await lookup(name);
+                const { creators, matchId } = await lookup(name, creditedMbid);
+
+                // One matched by their MusicBrainz id under another name isn't among those found by name
+                let match = null;
+                if (matchId != null) {
+                    match = creators.find(c => String(c.id) === String(matchId)) ??
+                        await backendApi.getCreator(matchId).catch(e => {
+                            console.error(e);
+                            return { id: matchId };
+                        });
+                }
 
                 // The user may have edited the box while we were waiting
-                if (nameInput.value === name)
-                    idInput.value = matchId ?? "";
+                if (nameInput.value === name) {
+                    setMatch(match);
+                    if (match?.name)
+                        nameInput.value = match.name;
+                }
             }
             catch (e) {
                 console.error(e);
