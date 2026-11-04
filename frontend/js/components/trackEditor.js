@@ -80,9 +80,10 @@ export function show(title, discNumber, trackNumber, durationSeconds, saveAction
         buttons: [
             {
                 "type": "delete",
-                "action": () => {
-                    if (deleteAction)
-                        deleteAction();
+                // deleteAction may resolve to false to keep the editor open (the track then stays)
+                "action": async () => {
+                    if (deleteAction && await deleteAction() === false)
+                        return false;
                     return true;
                 }
             },
@@ -103,12 +104,13 @@ export function show(title, discNumber, trackNumber, durationSeconds, saveAction
             },
             {
                 "type": "save",
-                "action": () => {
+                // saveAction may resolve to false to keep the editor open (the change then isn't made)
+                "action": async () => {
                     if (!form.reportValidity())
                         return false;
 
-                    if (saveAction)
-                        saveAction(trackTitleElement.value, Number(discNumberElement.value), Number(trackNumberElement.value), util.parseDurationToSeconds(trackDurationElement.value));
+                    if (saveAction && await saveAction(trackTitleElement.value, Number(discNumberElement.value), Number(trackNumberElement.value), util.parseDurationToSeconds(trackDurationElement.value)) === false)
+                        return false;
 
                     return true;
                 }

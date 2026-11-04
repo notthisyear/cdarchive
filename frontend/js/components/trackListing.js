@@ -13,6 +13,23 @@ function notifyTracksEdited(trackList) {
     trackList.dispatchEvent(new CustomEvent(TRACKS_EDITED_EVENT));
 }
 
+// Per track list: async () => boolean, asked before the user's add, edit or remove is made
+const editGuards = new WeakMap();
+
+/**
+ * Asks guard() before an add, edit or remove the user makes in the track editor is applied. When it
+ * resolves to false, nothing changes and the editor stays open. E.g. a release linked to MusicBrainz
+ * asks whether to unlink it. Tracks added from code aren't asked about.
+ */
+export function setEditGuard(trackList, guard) {
+    editGuards.set(trackList, guard);
+}
+
+async function isEditAllowed(trackList) {
+    const guard = editGuards.get(trackList);
+    return !guard || await guard();
+}
+
 function noTracksContent() {
     const div = document.createElement("div");
     div.className = `rounded-lg
@@ -133,19 +150,27 @@ function createTrackRowWithId(trackList, trackId, title, discNumber, trackNumber
             discNumber,
             trackNumber,
             durationSeconds,
-            (newTitle, newDiscNumber, newTrackNumber, newDuration) => {
+            async (newTitle, newDiscNumber, newTrackNumber, newDuration) => {
+                const changed = newTitle !== title || newDiscNumber !== discNumber
+                    || newTrackNumber !== trackNumber || newDuration !== durationSeconds;
+                if (changed && !await isEditAllowed(trackList))
+                    return false;
+
                 const hadMultipleDiscsBefore = hasMultipleDiscs();
                 const newRow = createTrackRow(trackList, newTitle, newDiscNumber, newTrackNumber, newDuration);
                 updateTrackRow(trackList, trackId, row, newRow, hadMultipleDiscsBefore);
 
-                const changed = newTitle !== title || newDiscNumber !== discNumber
-                    || newTrackNumber !== trackNumber || newDuration !== durationSeconds;
                 if (changed)
                     notifyTracksEdited(trackList);
+                return true;
             },
-            () => {
+            async () => {
+                if (!await isEditAllowed(trackList))
+                    return false;
+
                 removeTrackRow(trackList, trackId, row);
                 notifyTracksEdited(trackList);
+                return true;
             });
     });
     return row;
@@ -166,6 +191,29 @@ export function addTrackRow(trackList, title, discNumber, trackNumber, durationS
     else {
         recreateTrackListing(trackList);
     }
+}
+
+/**
+ * Opens the track editor for a new track, numbered after the last track of the last disc. The track
+ * is only added when the editor is saved (and the edit guard, if any, allows it), unlike
+ * addEmptyTrackRow(), which adds a placeholder row straight away.
+ */
+export function editNewTrack(trackList) {
+    const tracks = [...tracksMap.values()];
+    const discNumber = Math.max(1, ...tracks.map(x => x.discNumber));
+    const trackNumber = Math.max(0, ...tracks.filter(x => x.discNumber === discNumber).map(x => x.trackNumber)) + 1;
+
+    trackEditor.show("", discNumber, trackNumber, 0,
+        async (title, newDiscNumber, newTrackNumber, durationSeconds) => {
+            if (!await isEditAllowed(trackList))
+                return false;
+
+            addTrackRow(trackList, title, newDiscNumber, newTrackNumber, durationSeconds);
+            notifyTracksEdited(trackList);
+            return true;
+        },
+        // Deleting a track that was never added is just not adding it
+        null);
 }
 
 export function addEmptyTrackRow(trackList) {
