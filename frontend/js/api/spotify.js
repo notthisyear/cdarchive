@@ -35,6 +35,26 @@ export async function searchOnSpotify(q, type, limit, offset, reponseExtractor) 
     return reponseExtractor(await getFromSpotify(`${SPOTIFY_API_URL}/search?${params}`));
 }
 
+const SPOTIFY_ID = String.raw`[A-Za-z0-9]{22}`;
+const ALBUM_URL = new RegExp(String.raw`^(?:https?://)?open\.spotify\.com/(?:intl-[a-z]{2}(?:-[a-z]{2})?/)?album/(${SPOTIFY_ID})(?:[/?#].*)?$`, "i");
+const BARE_ID = new RegExp(`^${SPOTIFY_ID}$`);
+
+/**
+ * The album id in what the user pasted: a Spotify album URL ("https://open.spotify.com/album/<id>",
+ * also with a locale like "/intl-de/" or a "?si=..." as share links have), or a bare id. Null for
+ * anything else. Ids are case-sensitive, so it's returned as given.
+ */
+export function parseSpotifyAlbumId(text) {
+    const trimmed = text?.trim() ?? "";
+    if (BARE_ID.test(trimmed))
+        return trimmed;
+    return ALBUM_URL.exec(trimmed)?.[1] ?? null;
+}
+
+export function spotifyAlbumUrl(spotifyAlbumId) {
+    return `https://open.spotify.com/album/${encodeURIComponent(spotifyAlbumId)}`;
+}
+
 export async function getSpotifyAlbum(spotifyAlbumId) {
     return await getFromSpotify(`${SPOTIFY_API_URL}/albums/${encodeURIComponent(spotifyAlbumId)}`);
 }

@@ -119,6 +119,24 @@ export function escapeHtml(value) {
     })[c]);
 }
 
+// A name for comparing with others: lower case, without diacritics, and with anything but letters
+// and digits as single spaces ("Motörhead" and "MOTORHEAD", "Guns N' Roses" and "Guns N’ Roses").
+// Like the backend's NameSimilarity.Normalize.
+export function normalizeName(name) {
+    return String(name ?? "")
+        .normalize("NFD")
+        .replace(/\p{Mn}/gu, "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+}
+
+// The same name, ignoring case, diacritics and punctuation. Two empty names aren't the same.
+export function namesMatch(a, b) {
+    const normalized = normalizeName(a);
+    return normalized !== "" && normalized === normalizeName(b);
+}
+
 export function concatenateArtists(artists) {
     let i = 0;
     const result = [];

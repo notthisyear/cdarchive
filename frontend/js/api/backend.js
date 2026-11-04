@@ -53,6 +53,73 @@ export async function getRelease(releaseId) {
 }
 
 /**
+ * Changes one of the user's releases and resolves with its ReleaseDetails as they are now. request
+ * is an UpdateReleaseRequest:
+ *   { title, format, releaseYear, firstReleaseYear, durationSeconds, barcode, country,
+ *     musicBrainzReleaseId, musicBrainzReleaseGroupId, spotifyAlbumId,
+ *     credits: [{ creatorId, role, joinPhrase, characterName, creditedName }],
+ *     tracks,      // null keeps the current ones
+ *     cover }      // null keeps the current images, or { source: "CoverArtArchive", externalId: <release mbid> }
+ * A release linked to MusicBrainz that stays linked to the same release only takes spotifyAlbumId.
+ * Throws with the backend's message, e.g. when it would be the same as another release.
+ */
+export async function updateRelease(releaseId, request) {
+    const url = new URL(`/api/releases/${encodeURIComponent(releaseId)}`, window.location.origin);
+    const response = await common.fetchFromUrl(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request)
+    });
+    return await response.json();
+}
+
+/**
+ * Replaces the track list of one of the user's releases ([{ discNumber, trackNumber, title,
+ * durationSeconds }]) and resolves with its ReleaseDetails as they are now. A release linked to
+ * MusicBrainz loses that link, as it's no longer the same release. Throws with the backend's message.
+ */
+export async function replaceTracks(releaseId, tracks) {
+    const url = new URL(`/api/releases/${encodeURIComponent(releaseId)}/tracks`, window.location.origin);
+    const response = await common.fetchFromUrl(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tracks)
+    });
+    return await response.json();
+}
+
+/**
+ * Sets the user's own data about one of their releases, all of it at once (what isn't given is
+ * cleared): { acquiredOn: "YYYY-MM-DD" | null, score: 1-10 | null, consumed: bool, notes: string | null }.
+ * Resolves with its ReleaseDetails as they are now. Throws with the backend's message.
+ */
+export async function setPersonalReleaseData(releaseId, { acquiredOn = null, score = null, consumed = false, notes = null } = {}) {
+    const url = new URL(`/api/releases/${encodeURIComponent(releaseId)}/personal`, window.location.origin);
+    const response = await common.fetchFromUrl(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acquiredOn, score, consumed, notes })
+    });
+    return await response.json();
+}
+
+/**
+ * Adds an image the user uploads (a File) to one of their releases, as the one to show. The release
+ * keeps its other images. Resolves with its ReleaseDetails as they are now. Throws with the backend's
+ * message, e.g. for a file that isn't a JPEG, PNG or WebP image of at most 8 MiB.
+ */
+export async function uploadReleaseImage(releaseId, file) {
+    const url = new URL(`/api/releases/${encodeURIComponent(releaseId)}/images`, window.location.origin);
+
+    // No Content-Type header: the browser sets it, with the boundary between the parts
+    const form = new FormData();
+    form.append("files", file);
+
+    const response = await common.fetchFromUrl(url, { method: "POST", body: form });
+    return await response.json();
+}
+
+/**
  * Removes one of the user's releases. Resolves with the artists it credited who are on none of the
  * user's releases anymore, by sort name, for asking whether to remove them too:
  *   { creatorsWithoutReleases: [{ id, name }] }
@@ -154,7 +221,7 @@ export async function addNewCreator(creator, imageFile = null) {
 
 /**
  * Adds a release to the user's collection and returns its id. release is a NewReleaseRequest:
- *   { title, type, status, format, releaseYear, firstReleaseYear, durationSeconds, barcode,
+ *   { title, type, status, format, releaseYear, firstReleaseYear, durationSeconds, barcode, country,
  *     musicBrainzReleaseId, musicBrainzReleaseGroupId, spotifyAlbumId, notes, score, acquiredOn,
  *     credits: [{ creatorId, role, joinPhrase, characterName, creditedName }],
  *     tracks: [{ discNumber, trackNumber, title, durationSeconds }],
