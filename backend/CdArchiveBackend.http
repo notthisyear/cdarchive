@@ -14,4 +14,4 @@ Content-Type: application/json
 GET {{CdArchiveBackend_HostAddress}}/api/records
 
 ###
-GET {{CdArchiveBackend_HostAddress}}/debug/routes
+GET {{CdArchiveBackend_HostAddress}}/api/artists?id=123
