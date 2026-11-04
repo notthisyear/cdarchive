@@ -102,7 +102,8 @@ namespace CdArchiveTests
                 coverArt,
                 wikimedia);
 
-            return new(db, mediaFiles, new CreatorService(db, mediaFiles, MediaUrls, musicBrainz), new ReleaseService(db, mediaFiles, MediaUrls), musicBrainz);
+            var creators = new CreatorService(db, mediaFiles, MediaUrls, musicBrainz);
+            return new(db, mediaFiles, creators, new ReleaseService(db, mediaFiles, MediaUrls, creators), musicBrainz);
         }
 
         public static FormFileCollection Files(params byte[][] contents)

@@ -151,6 +151,44 @@ namespace CdArchiveBackend.Services
             return new(creator.Id, AddCreatorError.None);
         }
 
+        // Those of the user's creators among creatorIds that no release credits, by sort name
+        public async Task<List<CreatorSummary>> GetCreatorsWithoutReleasesAsync(long userId, IReadOnlyCollection<long> creatorIds, CancellationToken ct)
+            => await ToSummariesAsync(
+                _dbContext.Creators
+                    .Where(x => x.UserId == userId && creatorIds.Contains(x.Id) && !x.ReleaseCredits.Any())
+                    .OrderBy(x => x.SortName),
+                ct).ConfigureAwait(false);
+
+        public enum RemoveCreatorResult
+        {
+            Removed,
+            NotFound,       // Not the user's (or doesn't exist)
+            HasReleases     // Still credited on one of the user's releases
+        }
+
+        // Removes one of the user's creators, with their external ids and images, unless a release
+        // still credits them: removing them would silently take them off it. Image files stay, as
+        // for a removed release.
+        public async Task<RemoveCreatorResult> RemoveCreatorAsync(long userId, long creatorId, CancellationToken ct)
+        {
+            var creator = await _dbContext.Creators
+                .Include(x => x.ExternalIds)
+                .Include(x => x.Images)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.Id == creatorId, ct)
+                .ConfigureAwait(false);
+
+            if (creator is null)
+                return RemoveCreatorResult.NotFound;
+
+            if (await _dbContext.ReleaseCreators.AnyAsync(x => x.CreatorId == creatorId, ct).ConfigureAwait(false))
+                return RemoveCreatorResult.HasReleases;
+
+            _dbContext.Creators.Remove(creator);
+            await _dbContext.SaveChangesAsync(ct).ConfigureAwait(false);
+            return RemoveCreatorResult.Removed;
+        }
+
         // The id of the user's creator with this external id, if they have one
         private async Task<long?> FindInCollectionAsync(long userId, ExternalSource source, string? externalId, CancellationToken ct)
         {

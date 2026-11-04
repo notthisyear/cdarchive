@@ -484,6 +484,62 @@ namespace CdArchiveTests
             => Assert.Null(await GetAsync(12345));
         #endregion
 
+        #region RemoveCreatorAsync
+        private Task<CreatorService.RemoveCreatorResult> RemoveAsync(long creatorId, long userId = UserId)
+            => _harness.NewRequest().Creators.RemoveCreatorAsync(userId, creatorId, CancellationToken.None);
+
+        // A release of the user's crediting the creator, as it would be in the database
+        private async Task SeedReleaseCreditingAsync(long creatorId)
+        {
+            using var db = _harness.CreateDbContext();
+            var release = new Release { UserId = UserId, Title = "Destroyer", Fingerprint = "fingerprint" };
+            release.Credits.Add(new() { CreatorId = creatorId, Role = CreditRole.Primary });
+            db.Releases.Add(release);
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        [Fact]
+        public async Task RemovedCreatorIsGoneWithTheirIdsAndImages()
+        {
+            var photo = SharedImage(Jpeg);
+            var kiss = await SeedCreatorAsync(userId: UserId, musicBrainzId: ArtistMbid, spotifyId: SpotifyId, images: [photo], preferredImage: photo);
+
+            Assert.Equal(CreatorService.RemoveCreatorResult.Removed, await RemoveAsync(kiss.Id));
+
+            using var db = _harness.CreateDbContext();
+            var ct = TestContext.Current.CancellationToken;
+            Assert.Empty(await db.Creators.ToListAsync(ct));
+            Assert.Empty(await db.Set<CreatorExternalId>().ToListAsync(ct));
+            Assert.Empty(await db.Set<CreatorImage>().ToListAsync(ct));
+
+            // A shared file may be anyone's
+            Assert.Single(await db.MediaFiles.ToListAsync(ct));
+        }
+
+        [Fact]
+        public async Task CreatorOnAReleaseIsntRemoved()
+        {
+            var kiss = await SeedCreatorAsync(userId: UserId);
+            await SeedReleaseCreditingAsync(kiss.Id);
+
+            Assert.Equal(CreatorService.RemoveCreatorResult.HasReleases, await RemoveAsync(kiss.Id));
+            Assert.Single(await _harness.CreateDbContext().Creators.ToListAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task AnotherUsersCreatorIsntRemoved()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+
+            Assert.Equal(CreatorService.RemoveCreatorResult.NotFound, await RemoveAsync(theirs.Id, userId: UserId));
+            Assert.Single(await _harness.CreateDbContext().Creators.ToListAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task RemovingACreatorThatDoesntExistIsNotFound()
+            => Assert.Equal(CreatorService.RemoveCreatorResult.NotFound, await RemoveAsync(12345));
+        #endregion
+
         #region FindMatchAsync
         private const string OtherArtistMbid = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
 

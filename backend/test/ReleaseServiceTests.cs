@@ -772,6 +772,99 @@ namespace CdArchiveTests
             => Assert.Null(await GetReleaseAsync(12345));
         #endregion
 
+        #region RemoveReleaseAsync
+        private Task<RemovedRelease?> RemoveAsync(long releaseId, long userId = UserId)
+            => _harness.NewRequest().Releases.RemoveReleaseAsync(userId, releaseId, CancellationToken.None);
+
+        [Fact]
+        public async Task RemovedReleaseIsGoneWithEverythingThatGoesWithIt()
+        {
+            var kiss = await SeedCreatorAsync();
+            var added = await AddAsync(Request(
+                credits: [Primary(kiss)],
+                tracks: [new(1, 1, "Detroit Rock City", 318)],
+                images: [Upload(0)],
+                musicBrainzReleaseId: ReleaseMbid),
+                ServiceHarness.Files(Jpeg));
+
+            Assert.NotNull(await RemoveAsync(added.ReleaseId));
+
+            using var db = _harness.CreateDbContext();
+            var ct = TestContext.Current.CancellationToken;
+            Assert.Empty(await db.Releases.ToListAsync(ct));
+            Assert.Empty(await db.ReleaseCreators.ToListAsync(ct));
+            Assert.Empty(await db.Set<Track>().ToListAsync(ct));
+            Assert.Empty(await db.Set<ReleaseImage>().ToListAsync(ct));
+            Assert.Empty(await db.Set<ReleaseExternalId>().ToListAsync(ct));
+
+            // The creator stays until the user says otherwise, and so does the image file
+            Assert.Single(await db.Creators.ToListAsync(ct));
+            Assert.Single(await db.MediaFiles.ToListAsync(ct));
+        }
+
+        [Fact]
+        public async Task RemovingTheLastReleaseOfACreatorSaysSo()
+        {
+            var simon = await SeedCreatorAsync(name: "Simon");
+            var garfunkel = await SeedCreatorAsync(name: "Garfunkel");
+            var added = await AddAsync(Request(credits: [Primary(simon, " & "), Primary(garfunkel)], title: "Bookends"));
+
+            var removed = await RemoveAsync(added.ReleaseId);
+
+            // By sort name
+            Assert.Equal([(garfunkel, "Garfunkel"), (simon, "Simon")], removed!.CreatorsWithoutReleases.Select(x => (x.Id, x.Name)));
+        }
+
+        // To show whom the user is asked about
+        [Fact]
+        public async Task CreatorWithoutReleasesComesWithTheirImage()
+        {
+            long kissId;
+            string fileName;
+            using (var db = _harness.CreateDbContext())
+            {
+                var photo = new MediaFile { FileName = "kiss.jpg", ContentType = "image/jpeg", ByteCount = Jpeg.Length, Sha1 = "kiss", Source = MediaSource.Wikimedia };
+                var kiss = new Creator { UserId = UserId, Name = "Kiss", SortName = "Kiss", Type = CreatorType.Group, PreferredImage = photo };
+                kiss.Images.Add(new() { MediaFile = photo, SortOrder = 0 });
+                db.Creators.Add(kiss);
+                await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+                (kissId, fileName) = (kiss.Id, photo.FileName);
+            }
+            var added = await AddAsync(Request(credits: [Primary(kissId)]));
+
+            var removed = await RemoveAsync(added.ReleaseId);
+
+            Assert.Equal($"/images/{fileName}", Assert.Single(removed!.CreatorsWithoutReleases).ImageUrl);
+        }
+
+        [Fact]
+        public async Task CreatorStillOnAnotherReleaseIsntMentioned()
+        {
+            var simon = await SeedCreatorAsync(name: "Simon");
+            var garfunkel = await SeedCreatorAsync(name: "Garfunkel");
+            var bookends = await AddAsync(Request(credits: [Primary(simon, " & "), Primary(garfunkel)], title: "Bookends"));
+            await AddAsync(Request(credits: [Primary(simon)], title: "Graceland"));
+
+            var removed = await RemoveAsync(bookends.ReleaseId);
+
+            Assert.Equal([(garfunkel, "Garfunkel")], removed!.CreatorsWithoutReleases.Select(x => (x.Id, x.Name)));
+        }
+
+        [Fact]
+        public async Task AnotherUsersReleaseIsntRemoved()
+        {
+            var theirs = await SeedCreatorAsync(userId: OtherUserId);
+            var releaseId = await AddReleaseAsync(theirs, "Destroyer", userId: OtherUserId);
+
+            Assert.Null(await RemoveAsync(releaseId, userId: UserId));
+            Assert.Single(await _harness.CreateDbContext().Releases.ToListAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task RemovingAReleaseThatDoesntExistIsNull()
+            => Assert.Null(await RemoveAsync(12345));
+        #endregion
+
         #region Failures
         [Fact]
         public async Task FailedSaveThrowsAndRemovesTheImagesItWrote()

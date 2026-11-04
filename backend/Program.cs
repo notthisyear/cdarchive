@@ -151,6 +151,7 @@ namespace CdArchiveBackend
             releasesEndpointGroup.AddEndpoint(new GetTotalNumberOfReleases());
             releasesEndpointGroup.AddEndpoint(new AddReleaseEndpoint());
             releasesEndpointGroup.AddEndpoint(new GetReleaseEndpoint());
+            releasesEndpointGroup.AddEndpoint(new RemoveReleaseEndpoint());
             endpointGroups.Add(releasesEndpointGroup);
 
             var musicbrainzEndpointGroup = new EndpointGroupBase("/musicbrainz", useAuthorization: true);
@@ -173,6 +174,7 @@ namespace CdArchiveBackend
             creatorsEndpointGroup.AddEndpoint(new AddCreatorEndpoint());
             creatorsEndpointGroup.AddEndpoint(new GetCreatorEndpoint());
             creatorsEndpointGroup.AddEndpoint(new SearchCreatorsEndpoint());
+            creatorsEndpointGroup.AddEndpoint(new RemoveCreatorEndpoint());
             endpointGroups.Add(creatorsEndpointGroup);
 
             // Note: Here, there no authorization. Browsers don't send the token for an <img src>, so the links are signed instead

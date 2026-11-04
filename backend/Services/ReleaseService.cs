@@ -12,7 +12,10 @@ namespace CdArchiveBackend.Services
 {
     using ImageError = MediaFileService.ImageError;
 
-    internal sealed class ReleaseService(DatabaseContext dbContext, MediaFileService mediaFileService, MediaUrlService mediaUrlService)
+    internal sealed class ReleaseService(DatabaseContext dbContext,
+                                         MediaFileService mediaFileService,
+                                         MediaUrlService mediaUrlService,
+                                         CreatorService creatorService)
     {
         public const int MaxPageSize = 100;
 
@@ -32,6 +35,7 @@ namespace CdArchiveBackend.Services
         private readonly DatabaseContext _dbContext = dbContext;
         private readonly MediaFileService _mediaFileService = mediaFileService;
         private readonly MediaUrlService _mediaUrlService = mediaUrlService;
+        private readonly CreatorService _creatorService = creatorService;
 
         // What a summary is built from, read in one query
         private sealed record SummaryRow(long Id,
@@ -266,6 +270,35 @@ namespace CdArchiveBackend.Services
             }
 
             return new(release.Id, AddReleaseError.None);
+        }
+
+        // Removes one of the user's releases, with its credits, tracks, images and external ids.
+        // Null if it isn't theirs (or doesn't exist). Otherwise the creators it credited who have
+        // no releases left, for the user to decide whether to remove them too. Their image files
+        // stay: shared ones may be used by others, and the creator's own images aren't touched.
+        public async Task<RemovedRelease?> RemoveReleaseAsync(long userId, long releaseId, CancellationToken ct)
+        {
+            // Loaded with everything that goes with it, so the change tracker removes those too
+            // (the database would cascade anyway, but the in-memory one used by the tests doesn't)
+            var release = await _dbContext.Releases
+                .Include(x => x.Credits)
+                .Include(x => x.Tracks)
+                .Include(x => x.Images)
+                .Include(x => x.ExternalIds)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.Id == releaseId, ct)
+                .ConfigureAwait(false);
+
+            if (release is null)
+                return null;
+
+            var creatorIds = release.Credits.Select(x => x.CreatorId).Distinct().ToList();
+
+            _dbContext.Releases.Remove(release);
+            await _dbContext.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            // With their images, to show whom the user is asked about
+            return new RemovedRelease(await _creatorService.GetCreatorsWithoutReleasesAsync(userId, creatorIds, ct).ConfigureAwait(false));
         }
 
         // The id of the user's release that's the same as the new one, if they have one. With a

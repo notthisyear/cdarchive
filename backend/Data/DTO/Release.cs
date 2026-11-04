@@ -46,6 +46,12 @@ namespace CdArchiveBackend.Data.DTO
         IReadOnlyList<ImageInfo> Images,
         IReadOnlyDictionary<ExternalSource, string> ExternalIds);
 
+    // --- Removing ---
+
+    // What's left to decide after removing a release: the creators it credited who are now on none
+    // of the user's releases, by sort name, with their images to show whom the user is asked about
+    public sealed record RemovedRelease(IReadOnlyList<CreatorSummary> CreatorsWithoutReleases);
+
     // --- Write side ---
 
     // The credits are in billing order. CreditedName is the name the release credits the creator as,
